@@ -264,8 +264,138 @@ SPLASH_S = 3            # start-up text stays this long before the first departu
 def draw_static(bmp, width, height, settings, color=1):
     draw_text(bmp, TITLE, 0, TOP, color)
 
+# --- status screens -------------------------------------------------------------
+# Shown instead of an empty board, so it's always clear the box is alive:
+#   loading  - after start-up until the first data arrives
+#   offline  - no fresh data for STALE_MAX_S (or none at all since start-up)
+#   empty    - the server answered, but nothing leaves within bkk_max_minutes
+#   info     - setup prompts from the app (pick operator / station ...)
+# Short outages are bridged: the last departures stay up to STALE_MAX_S with
+# their minutes counted down on the box.
+STALE_MAX_S = 120
+BACKOFF_S = (20, 30, 60)        # next request after 0 / 1 / 2+ failures in a row
+FAIL_MARKERS = ("-", "*", "**", "***")
+TXT_LOADING = "Adatok betöltése"
+TXT_OFFLINE = "Nincs kapcsolat"
+TXT_EMPTY = "Ebből a megállóból {} percen belül nem indul járat."
+TXT_EMPTY_SHORT = "Nincs induló járat"
+ICON = 7                        # icons are 7 x 7, same height as the letters
+ICON_GAP = 2
+
+# 16 points of a 7x7 circle, clockwise from the top
+RING = ((2, 0), (3, 0), (4, 0), (5, 1), (6, 2), (6, 3), (6, 4), (5, 5),
+        (4, 6), (3, 6), (2, 6), (1, 5), (0, 4), (0, 3), (0, 2), (1, 1))
+DIRS = ((0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1))
+ICON_PERIOD = {"loading": 0.12, "offline": 0.8, "empty": 1.0}
+
+def icon_pixels(kind, frame):
+    if kind == "loading":           # circle with a gap travelling round it
+        gap = [(frame * 2 + i) % 16 for i in range(3)]
+        return [p for i, p in enumerate(RING) if i not in gap]
+    if kind == "offline":           # circled x, pulsing
+        if frame % 2: return [(2, 2), (4, 2), (3, 3), (2, 4), (4, 4)]
+        return list(RING) + [(2, 2), (4, 2), (3, 3), (2, 4), (4, 4)]
+    if kind == "empty":             # clock whose hand ticks round
+        dx, dy = DIRS[frame % 8]
+        return list(RING) + [(3, 3), (3 + dx, 3 + dy), (3 + 2 * dx, 3 + 2 * dy)]
+    return []
+
+def wrap_text(text, width):
+    lines, cur = [], ""
+    for w in text.split(" "):
+        t = w if not cur else cur + " " + w
+        if text_width(t) <= width or not cur:
+            cur = t
+        else:
+            lines.append(cur)
+            cur = w
+    if cur: lines.append(cur)
+    return [hard_cut(l, width) if text_width(l) > width else l for l in lines]
+
+def build_status(kind, width, height, settings, text=None):
+    """Layout of a status screen: header, wrapped text, icon position."""
+    rows_n = max(1, height // PITCH)
+    if text is None:
+        text = {"loading": TXT_LOADING, "offline": TXT_OFFLINE,
+                "empty": TXT_EMPTY.format(int(settings.get("bkk_max_minutes", 60)))}[kind]
+    has_icon = kind in ICON_PERIOD
+    avail = rows_n - 1 if rows_n > 1 else 1          # rows under the header
+
+    def layout(t):
+        lines = wrap_text(t, width)
+        inline = has_icon and text_width(lines[-1]) + ICON_GAP + ICON <= width
+        return lines, inline, len(lines) + (1 if has_icon and not inline else 0)
+
+    lines, inline, need = layout(text)
+    if need > avail and kind == "empty":
+        lines, inline, need = layout(TXT_EMPTY_SHORT)
+    first = 2 if need == 1 and rows_n >= 3 else 1
+    if rows_n == 1: first = 0
+    placed = [(l, 0, TOP + (first + i) * PITCH) for i, l in enumerate(lines[:max(1, avail)])]
+    icon = None
+    if has_icon:
+        if inline:
+            last, x, y = placed[-1]
+            icon = (x + text_width(last) + ICON_GAP, y)
+        else:
+            icon = (0, TOP + (first + len(placed)) * PITCH)
+    return {"kind": kind, "header": rows_n > 1, "lines": placed, "icon": icon, "frame": -1}
+
+def draw_status(bmp, st, color=1):
+    if st["header"]: draw_text(bmp, TITLE, 0, TOP, color)
+    for text, x, y in st["lines"]: draw_text(bmp, text, x, y, color)
+    st["frame"] = -1
+
+def tick_status(bmp, st, now, color=1):
+    """Redraw the icon when its frame changes. Returns True if it changed."""
+    if not st or not st["icon"] or st["kind"] not in ICON_PERIOD: return False
+    frame = int(now / ICON_PERIOD[st["kind"]])
+    if frame == st["frame"]: return False
+    st["frame"] = frame
+    x0, y0 = st["icon"]
+    clear_rect(bmp, x0, y0, ICON, ICON)
+    for px, py in icon_pixels(st["kind"], frame):
+        try: bmp[x0 + px, y0 + py] = color
+        except Exception: pass
+    return True
+
+def classify(data, fail_texts=(), prompt_texts=()):
+    """Host get_departure() result -> ("ok", rows) | ("fail", None) | ("info", text)."""
+    if not data: return "ok", []
+    first = data[0]
+    if isinstance(first, list) and first and first[0] == "1":
+        msg = str(first[1]).strip() if len(first) > 1 else ""
+        if msg in FAIL_MARKERS or msg.startswith("^") or msg in fail_texts:
+            return "fail", None
+        if msg in prompt_texts:
+            return "info", msg
+        print("BKK skin: server message treated as 'no departures':", msg)
+        return "ok", []
+    return "ok", data
+
+def age_rows(rows, age_s):
+    """Last good departures, minutes counted down by age_s; gone ones dropped."""
+    out, gone = [], int(age_s // 60)
+    for d in rows:
+        d = list(d)
+        while len(d) < 8: d.append("")
+        mins = str(d[3]).strip()
+        if d[7]:                                  # was already departing
+            if age_s <= 60: out.append(d)
+            continue
+        if not mins.isdigit():
+            out.append(d); continue
+        left = int(mins) - gone
+        if left < 0: continue
+        if left == 0: d[3], d[7] = "0", 1
+        else: d[3] = str(left)
+        out.append(d)
+    return out
+
 # --- host glue ----------------------------------------------------------------
 _rows = []
+_status = None
+_net = {"good": None, "good_t": 0.0, "fails": 0, "bridging": False, "bridge_min": -1, "check_t": 0.0}
 
 def _settings():
     return varinit.settings
@@ -278,40 +408,107 @@ def _hide_list_layers():
         varinit.overlay_tg.hidden = True
     except Exception: pass
 
+def _host_texts():
+    try:
+        import dicts
+        L = dicts.language[_settings()["language"]]
+        return ((L["settings"]["no_data"],),
+                (L["settings"]["select_operator"], L["settings"]["search"], L["display"]["select_station"]))
+    except Exception:
+        return (), ()
+
+def _show_status(bmp, kind, text=None):
+    global _status, _rows
+    _rows = []
+    _status = build_status(kind, varinit.if_long, varinit.if_tall, _settings(), text)
+    draw_status(bmp, _status)
+    tick_status(bmp, _status, time.monotonic())
+
+def _show_rows(bmp, departures):
+    global _status, _rows
+    _status = None
+    _rows = build_rows(departures, varinit.if_long, varinit.if_tall, _settings())
+    if not _rows:
+        _show_status(bmp, "empty")
+        return
+    for r in _rows: draw_row(bmp, r)
+
 def render():
-    global _rows
+    global _rows, _status
     if _FONT is None: load_font()
     _hide_list_layers()
     bmp = varinit.topbottom
-    cls(bmp)
+    now = time.monotonic()
     if int(_settings().get("bkk_static", 0)):
         # static content instead of departures: nothing to fetch, nothing to animate
-        _rows = []
+        _rows, _status = [], None
+        cls(bmp)
         draw_static(bmp, varinit.if_long, varinit.if_tall, _settings())
         refresh()
-        return time.monotonic()
+        return now
+    if _net["good"] is None and (_status is None or _status["kind"] != "offline"):
+        cls(bmp)                                   # first data: say we're loading
+        _show_status(bmp, "loading")
+        refresh()
     # ask the host for a few more rows than fit (duplicates get dropped), then
     # put the user's own setting back so nothing else is affected
     _md = varinit.settings.get("maxdest", 5)
     varinit.settings["maxdest"] = max(int(_md), varinit.if_tall // PITCH + 3)
     try: data = get_departure(num="1")
     finally: varinit.settings["maxdest"] = _md
-    if data and isinstance(data[0], list) and data[0][0] == "1":
-        # error / info message from the host pipeline: show it on the first row
-        _rows = []
-        draw_text(bmp, hard_cut(str(data[0][1]), varinit.if_long), 0, TOP)
+    now = time.monotonic()
+    fail_texts, prompt_texts = _host_texts()
+    kind, payload = classify(data, fail_texts, prompt_texts)
+    cls(bmp)
+    _net["bridging"] = False
+    if kind == "ok":
+        _net["good"], _net["good_t"], _net["fails"] = payload, now, 0
+        _show_rows(bmp, payload)
+        refresh()
+        return now
+    if kind == "info":
+        _net["fails"] = 0
+        _show_status(bmp, "info", payload)
+        refresh()
+        return now
+    # failed request: bridge with the last good data, then say so; back off
+    _net["fails"] += 1
+    age = now - _net["good_t"]
+    if _net["good"] is not None and age <= STALE_MAX_S:
+        _show_rows(bmp, age_rows(_net["good"], age))
+        _net["bridging"], _net["bridge_min"] = True, int(age // 60)
     else:
-        _rows = build_rows(data or [], varinit.if_long, varinit.if_tall, _settings())
-        for r in _rows: draw_row(bmp, r)
+        _show_status(bmp, "offline")
+        _net["bridging"] = False
     refresh()
-    return time.monotonic()
+    wait = BACKOFF_S[min(_net["fails"], len(BACKOFF_S) - 1)]
+    return now + wait - varinit.updatedelay
+
+def _check_bridge(now):
+    """Between requests while showing last-known data: count the minutes down
+    and switch to 'Nincs kapcsolat' as soon as the data is too old."""
+    if not _net["bridging"] or now - _net["check_t"] < 5: return False
+    _net["check_t"] = now
+    age = now - _net["good_t"]
+    bmp = varinit.topbottom
+    if age > STALE_MAX_S:
+        _net["bridging"] = False
+        cls(bmp); _show_status(bmp, "offline"); return True
+    if int(age // 60) != _net["bridge_min"]:
+        _net["bridge_min"] = int(age // 60)
+        cls(bmp); _show_rows(bmp, age_rows(_net["good"], age)); return True
+    return False
 
 def animate_tick():
+    now = time.monotonic()
+    changed = _check_bridge(now)
     if _rows:
         blink = max(100, int(_settings().get("arrival_blink_ms", 600))) / 1000
-        if tick_rows(varinit.topbottom, _rows, time.monotonic(), blink):
-            refresh()
-    return False      # never hold back the regular 20 s refresh
+        changed = tick_rows(varinit.topbottom, _rows, now, blink) or changed
+    elif _status:
+        changed = tick_status(varinit.topbottom, _status, now) or changed
+    if changed: refresh()
+    return False      # never hold back the regular refresh
 
 def message_active():
     return False
@@ -331,7 +528,7 @@ def on_enter():
     return time.monotonic() - varinit.updatedelay + SPLASH_S
 
 def on_exit():
-    global _rows
+    global _rows, _status
     varinit.want_arrivals = False
-    _rows = []
+    _rows, _status = [], None
     cls(varinit.topbottom)
