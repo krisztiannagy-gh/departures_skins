@@ -23,6 +23,11 @@ Long destination names (settings bkk_shorten + the app's dest_scroll):
 Scrolling only ever happens inside the destination column, never over the
 line number or the minutes.
 
+Static mode (setting bkk_static): instead of departures show either the text
+"BKK FUTÁR" (top left) or a picture (centred) - setting bkk_static_content.
+The picture comes from bkk_picture.txt in the box's root folder if present.
+"BKK FUTÁR" is also shown for SPLASH_S seconds when the skin starts.
+
 Contract: on_enter(), render(), animate_tick(), message_active(),
 refresh_settings(), on_exit()
 """
@@ -254,6 +259,64 @@ def tick_rows(bmp, rows, now, blink_s, color=1):
             changed = True
     return changed
 
+# --- static content -------------------------------------------------------------
+TITLE = "BKK FUTÁR"
+SPLASH_S = 3            # start-up text stays this long before the first departures
+PICTURE_FILES = ("/bkk_picture.txt", "bkk_picture.txt")
+
+# Original tram pictogram, used when no picture file has been copied to the box.
+TRAM = (
+    "......########......",
+    ".......#....#.......",
+    "......#......#......",
+    ".##################.",
+    "#..................#",
+    "#.################.#",
+    "#.#..............#.#",
+    "#.#..............#.#",
+    "#.#..............#.#",
+    "#.#..............#.#",
+    "#.#..............#.#",
+    "#.################.#",
+    "#..................#",
+    "#..................#",
+    "#..##..........##..#",
+    "#..##..........##..#",
+    "#..................#",
+    "#..................#",
+    "####################",
+    ".##..............##.",
+    ".##..............##.",
+)
+
+def load_picture():
+    """Rows of '#' (LED on) and '.' (off) from bkk_picture.txt in the box's root
+    folder (make one with tools/picture_to_matrix.py); the tram pictogram otherwise."""
+    for path in PICTURE_FILES:
+        try:
+            with open(path) as f:
+                rows = [ln.rstrip("\r\n") for ln in f]
+            rows = [r for r in rows if r.strip()]
+            if rows: return rows
+        except OSError:
+            pass
+    return TRAM
+
+def draw_picture(bmp, rows, width, height, color=1):
+    pw = max(len(r) for r in rows)
+    x0, y0 = max(0, (width - pw) // 2), max(0, (height - len(rows)) // 2)
+    for y, row in enumerate(rows[:height]):
+        for x, ch in enumerate(row[:width]):
+            if ch not in ". ":
+                try: bmp[x0 + x, y0 + y] = color
+                except Exception: pass
+
+def draw_static(bmp, width, height, settings, color=1):
+    if settings.get("bkk_static_content", "text") == "picture":
+        draw_picture(bmp, load_picture(), width, height, color)
+    else:
+        draw_text(bmp, TITLE, 0, TOP, color)
+
 # --- host glue ----------------------------------------------------------------
 _rows = []
 
@@ -274,6 +337,12 @@ def render():
     _hide_list_layers()
     bmp = varinit.topbottom
     cls(bmp)
+    if int(_settings().get("bkk_static", 0)):
+        # static content instead of departures: nothing to fetch, nothing to animate
+        _rows = []
+        draw_static(bmp, varinit.if_long, varinit.if_tall, _settings())
+        refresh()
+        return time.monotonic()
     # ask the host for a few more rows than fit (duplicates get dropped), then
     # put the user's own setting back so nothing else is affected
     _md = varinit.settings.get("maxdest", 5)
@@ -306,7 +375,13 @@ def refresh_settings():
 def on_enter():
     varinit.want_arrivals = True       # host keeps departures under 1 min for us
     load_font()
-    return render()
+    # start-up text, like a board coming on; the first departures follow after
+    # SPLASH_S seconds (the host renders once the returned time + updatedelay passes)
+    _hide_list_layers()
+    cls(varinit.topbottom)
+    draw_text(varinit.topbottom, TITLE, 0, TOP)
+    refresh()
+    return time.monotonic() - varinit.updatedelay + SPLASH_S
 
 def on_exit():
     global _rows
