@@ -15,7 +15,7 @@ Layout (same rules as the real 24/40/80 x 192 boards, scaled to any panel):
   * departures more than bkk_max_minutes (default 60) away are not shown.
   * identical rows (same line, destination and minutes) are shown once.
 
-Long destination names (setting bkk_long_names):
+Long destination names (settings bkk_shorten + the app's dest_scroll):
   abbr_cut     shorten words BKK-style (vasútállomás -> vasútáll. ...), then cut
   abbr_scroll  shorten, then scroll what still doesn't fit
   cut          cut at the last whole character that fits
@@ -180,7 +180,10 @@ def build_rows(departures, width, height, settings):
     Returns a list of drawable row dicts (pure, no drawing)."""
     max_rows = max(1, height // PITCH)
     max_min = int(settings.get("bkk_max_minutes", 60))
-    mode = settings.get("bkk_long_names", "abbr_cut")
+    # bkk_shorten (this skin) + dest_scroll (the app's "Scroll long destination
+    # names") together pick one of LONG_NAME_MODES
+    mode = ("abbr_" if int(settings.get("bkk_shorten", 1)) else "") + \
+           ("scroll" if int(settings.get("dest_scroll", 0)) else "cut")
     pairs = settings.get("dest_abbrev", []) or []
     if not isinstance(pairs, list): pairs = []
 
