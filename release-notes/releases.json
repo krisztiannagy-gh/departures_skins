@@ -1,0 +1,38 @@
+[
+ {
+  "tag": "bkk-v1",
+  "commit": "74b2c70fe69266698343242e15bb1123b18b368a",
+  "title": "BKK FUTÁR skin v1 — first release",
+  "notes": "bkk-v1.md"
+ },
+ {
+  "tag": "bkk-v2",
+  "commit": "f611eab19bd58f9283eefb268c926a762ca34f7f",
+  "title": "BKK FUTÁR skin v2 — ő and ű",
+  "notes": "bkk-v2.md"
+ },
+ {
+  "tag": "bkk-v3",
+  "commit": "b5558b0e44b2b579d7d3aaa5c647544778fe7f01",
+  "title": "BKK FUTÁR skin v3 — clearer long-name settings",
+  "notes": "bkk-v3.md"
+ },
+ {
+  "tag": "bkk-v4",
+  "commit": "504389330366642ea2fe19cb271de54489345054",
+  "title": "BKK FUTÁR skin v4 — start-up text and static mode",
+  "notes": "bkk-v4.md"
+ },
+ {
+  "tag": "bkk-v5",
+  "commit": "1c36b6223c96f8f88a4e556ec73c46f55f8bea3a",
+  "title": "BKK FUTÁR skin v5 — static mode text only",
+  "notes": "bkk-v5.md"
+ },
+ {
+  "tag": "bkk-v6",
+  "commit": "2fd9896244b66945eeef53390c10d477b09e9202",
+  "title": "BKK FUTÁR skin v6 — status screens instead of a dark board",
+  "notes": "bkk-v6.md"
+ }
+]
