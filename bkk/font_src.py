@@ -84,20 +84,23 @@ g("y", ".....", ".....", "#...#", "#...#", ".####", "....#", ".###.")
 g("z", ".....", ".....", "#####", "...#.", "..#..", ".#...", "#####")
 
 # --- accents -------------------------------------------------------------
-ACUTE, UML, DBL = "...#.", ".#.#.", "..#.#"
+# Long vowels (á é í ó ő ú ű): accent is 2 px tall and slanted like an italic
+# stroke, touching the top of the letter. Short umlauts (ö ü ä): single-pixel
+# dots with an empty row between them and the letter.
+ACUTE = ("...#.", "..#..")
+DBL   = ("..#.#", ".#.#.")
+UML   = (".#.#.", ".....")
 
 def lower_accent(base, accent, *chars):
     rows = G[base]
-    w = len(rows[0])
-    acc = (accent + "." * w)[:w] if w >= 5 else accent[-w:]
     for c in chars:
-        G[c] = [acc, "." * w] + rows[2:]
+        G[c] = [accent[0], accent[1]] + rows[2:]
 
 lower_accent("a", ACUTE, "á"); lower_accent("e", ACUTE, "é")
 lower_accent("o", ACUTE, "ó"); lower_accent("o", UML, "ö"); lower_accent("o", DBL, "ő")
 lower_accent("u", ACUTE, "ú"); lower_accent("u", UML, "ü"); lower_accent("u", DBL, "ű")
 lower_accent("a", UML, "ä")
-G["í"] = [".#", "..", "#.", "#.", "#.", "#.", "#."]
+G["í"] = [".#", "#.", "#.", "#.", "#.", "#.", "#."]
 
 # accented capitals: 5 px tall body (rows 2-6) under the accent
 CAP5 = {
@@ -109,8 +112,8 @@ CAP5 = {
 }
 for c, base, acc in (("Á", "A", ACUTE), ("É", "E", ACUTE), ("Ó", "O", ACUTE), ("Ö", "O", UML),
                      ("Ő", "O", DBL), ("Ú", "U", ACUTE), ("Ü", "U", UML), ("Ű", "U", DBL), ("Ä", "A", UML)):
-    G[c] = [acc, "....."] + CAP5[base]
-G["Í"] = [".#.", "...", "###", ".#.", ".#.", ".#.", "###"]
+    G[c] = [acc[0], acc[1]] + CAP5[base]
+G["Í"] = ["..#", ".#.", "###", ".#.", ".#.", ".#.", "###"]
 G["ß"] = [".##.", "#..#", "#..#", "#.#.", "#..#", "#..#", "#.#."]
 
 # --- punctuation ---------------------------------------------------------
@@ -128,6 +131,9 @@ g("&", ".##..", "#..#.", "#.#..", ".#...", "#.#.#", "#..#.", ".##.#")
 g("*", ".....", "#.#.#", ".###.", "#####", ".###.", "#.#.#", ".....")
 g("!", "#", "#", "#", "#", "#", ".", "#")
 g("?", ".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#..")
+g("►", "....", "#...", "##..", "###.", "##..", "#...", "....")   # "via" arrow in BKK headsigns
+g("▶", "....", "#...", "##..", "###.", "##..", "#...", "....")
+g(">", "....", "#...", ".#..", "..#.", ".#..", "#...", "....")
 g("_", "###", "#.#", "#.#", "#.#", "#.#", "#.#", "###")          # unknown char
 
 def build():
