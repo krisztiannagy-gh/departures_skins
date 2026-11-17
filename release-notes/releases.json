@@ -34,5 +34,11 @@
   "commit": "2fd9896244b66945eeef53390c10d477b09e9202",
   "title": "BKK FUTÁR skin v6 — status screens instead of a dark board",
   "notes": "bkk-v6.md"
+ },
+ {
+  "tag": "wl-v1",
+  "commit": "6662f9e94340516b4a5d5271557754fb61da2eaa",
+  "title": "Wiener Linien skin v1 — first Vienna boards",
+  "notes": "wl-v1.md"
  }
 ]
