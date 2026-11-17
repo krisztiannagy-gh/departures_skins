@@ -97,8 +97,11 @@ def lower_accent(base, accent, *chars):
         G[c] = [accent[0], accent[1]] + rows[2:]
 
 lower_accent("a", ACUTE, "á"); lower_accent("e", ACUTE, "é")
-lower_accent("o", ACUTE, "ó"); lower_accent("o", UML, "ö"); lower_accent("o", DBL, "ő")
-lower_accent("u", ACUTE, "ú"); lower_accent("u", UML, "ü"); lower_accent("u", DBL, "ű")
+lower_accent("o", ACUTE, "ó"); lower_accent("o", UML, "ö")
+lower_accent("u", ACUTE, "ú"); lower_accent("u", UML, "ü")
+# ő and ű: the letter shrinks to 4 px, an empty row, then the 2 px double accent
+G["ő"] = [DBL[0], DBL[1], ".....", ".###.", "#...#", "#...#", ".###."]
+G["ű"] = [DBL[0], DBL[1], ".....", "#...#", "#...#", "#..##", ".##.#"]
 lower_accent("a", UML, "ä")
 G["í"] = [".#", "#.", "#.", "#.", "#.", "#.", "#."]
 
