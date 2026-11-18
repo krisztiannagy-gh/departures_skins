@@ -52,5 +52,11 @@
   "commit": "5c7ce66ca1ce8bbab4ec3fc0df0e04ed8dbe73f0",
   "title": "Wiener Linien skin v3 — real-board texts, logo, bigger departing square",
   "notes": "wl-v3.md"
+ },
+ {
+  "tag": "bkk-v7",
+  "commit": "3de0be6f4690975ad4cd3bbbc78de9b5a531f7ef",
+  "title": "BKK skin v7 — logo at start-up and while loading",
+  "notes": "bkk-v7.md"
  }
 ]
