@@ -23,9 +23,17 @@ Long destination names (settings bkk_shorten + the app's dest_scroll):
 Scrolling only ever happens inside the destination column, never over the
 line number or the minutes.
 
-Static mode (setting bkk_static): instead of departures show the text
-"BKK FUTÁR" top left (no data is fetched). The same text is shown for
-SPLASH_S seconds when the skin starts.
+Static mode (setting bkk_static): instead of departures show the BKK logo
+or the text "BKK FUTÁR" top left (setting bkk_static_style "logo" / "text";
+no data is fetched).
+
+Start-up: the BKK logo, centred, for SPLASH_S seconds. Loading/connecting:
+the logo with a 1 px bar on the bottom row that fills from left to right and
+then empties from left to right. It stays up while the first requests fail,
+for up to STALE_MAX_S after start-up, then "Nincs kapcsolat" takes over. (The bar
+stands still while a request is running: the box can't animate during one.)
+Panels too small for the logo (94 x 19) show
+the text "BKK FUTÁR" top left instead, and the usual "Adatok betöltése" screen.
 
 Contract: on_enter(), render(), animate_tick(), message_active(),
 refresh_settings(), on_exit()
@@ -260,8 +268,46 @@ def tick_rows(bmp, rows, now, blink_s, color=1):
 
 # --- static content -------------------------------------------------------------
 TITLE = "BKK FUTÁR"
-SPLASH_S = 3            # start-up text stays this long before the first departures
+SPLASH_S = 3            # start-up logo stays this long before the first departures
+BAR_S = 1.2             # loading bar: seconds to fill, then the same to empty
+_LOGO = None            # (w, h, row bitmasks) from bkk_logo.json
+
+def load_logo(path="skins/bkk/bkk_logo.json"):
+    global _LOGO
+    try:
+        with open(path) as f: d = json.load(f)
+        _LOGO = (d["w"], d["h"], tuple(int(r, 2) for r in d["rows"]))
+    except Exception as e:
+        print("BKK skin: no logo", e); _LOGO = None
+
+def logo_fits(width, height):
+    return _LOGO is not None and width >= _LOGO[0] and height >= _LOGO[1] + 2
+
+def draw_logo(bmp, width, height, color=1):
+    """Logo centred on the board. Returns False if it doesn't fit."""
+    if not logo_fits(width, height): return False
+    w, h, rows = _LOGO
+    x0, y0 = (width - w) // 2, (height - h) // 2
+    for r in range(h):
+        bits = rows[r]
+        if not bits: continue
+        for c in range(w):
+            if bits & (1 << (w - 1 - c)):
+                try: bmp[x0 + c, y0 + r] = color
+                except Exception: pass
+    return True
+
+def bar_span(now, width):
+    """Lit part [a, b) of the loading bar: fills left to right, then empties
+    left to right, eased at both ends."""
+    t = (now % (2 * BAR_S)) / BAR_S
+    e = lambda v: v * v * (3 - 2 * v)
+    if t < 1: return 0, int(e(t) * width + 0.5)
+    return int(e(t - 1) * width + 0.5), width
+
 def draw_static(bmp, width, height, settings, color=1):
+    if settings.get("bkk_static_style", "text") == "logo" and draw_logo(bmp, width, height, color):
+        return
     draw_text(bmp, TITLE, 0, TOP, color)
 
 # --- status screens -------------------------------------------------------------
@@ -342,12 +388,26 @@ def build_status(kind, width, height, settings, text=None):
     return {"kind": kind, "header": rows_n > 1, "lines": placed, "icon": icon, "frame": -1}
 
 def draw_status(bmp, st, color=1):
+    if st["kind"] == "logo":
+        draw_logo(bmp, st["w"], st["h"], color)
+        st["frame"] = -1
+        return
     if st["header"]: draw_text(bmp, TITLE, 0, TOP, color)
     for text, x, y in st["lines"]: draw_text(bmp, text, x, y, color)
     st["frame"] = -1
 
 def tick_status(bmp, st, now, color=1):
     """Redraw the icon when its frame changes. Returns True if it changed."""
+    if st and st["kind"] == "logo":                  # loading bar on the bottom row
+        span = bar_span(now, st["w"])
+        if span == st["frame"]: return False
+        st["frame"] = span
+        a, b = span
+        y = st["h"] - 1
+        for x in range(st["w"]):
+            try: bmp[x, y] = color if a <= x < b else 0
+            except Exception: pass
+        return True
     if not st or not st["icon"] or st["kind"] not in ICON_PERIOD: return False
     frame = int(now / ICON_PERIOD[st["kind"]])
     if frame == st["frame"]: return False
@@ -395,7 +455,7 @@ def age_rows(rows, age_s):
 # --- host glue ----------------------------------------------------------------
 _rows = []
 _status = None
-_net = {"good": None, "good_t": 0.0, "fails": 0, "bridging": False, "bridge_min": -1, "check_t": 0.0}
+_net = {"good": None, "good_t": 0.0, "fails": 0, "bridging": False, "bridge_min": -1, "check_t": 0.0, "start_t": 0.0}
 
 def _settings():
     return varinit.settings
@@ -420,7 +480,11 @@ def _host_texts():
 def _show_status(bmp, kind, text=None):
     global _status, _rows
     _rows = []
-    _status = build_status(kind, varinit.if_long, varinit.if_tall, _settings(), text)
+    w, h = varinit.if_long, varinit.if_tall
+    if kind == "loading" and logo_fits(w, h):
+        _status = {"kind": "logo", "w": w, "h": h, "frame": -1}
+    else:
+        _status = build_status(kind, w, h, _settings(), text)
     draw_status(bmp, _status)
     tick_status(bmp, _status, time.monotonic())
 
@@ -436,6 +500,7 @@ def _show_rows(bmp, departures):
 def render():
     global _rows, _status
     if _FONT is None: load_font()
+    if _LOGO is None: load_logo()
     _hide_list_layers()
     bmp = varinit.topbottom
     now = time.monotonic()
@@ -477,6 +542,9 @@ def render():
     if _net["good"] is not None and age <= STALE_MAX_S:
         _show_rows(bmp, age_rows(_net["good"], age))
         _net["bridging"], _net["bridge_min"] = True, int(age // 60)
+    elif _net["good"] is None and now - _net["start_t"] <= STALE_MAX_S:
+        _show_status(bmp, "loading")               # still connecting after start-up
+        _net["bridging"] = False
     else:
         _show_status(bmp, "offline")
         _net["bridging"] = False
@@ -519,11 +587,14 @@ def refresh_settings():
 def on_enter():
     varinit.want_arrivals = True       # host keeps departures under 1 min for us
     load_font()
-    # start-up text, like a board coming on; the first departures follow after
+    load_logo()
+    _net["start_t"] = time.monotonic()
+    # start-up logo, like a board coming on; the first departures follow after
     # SPLASH_S seconds (the host renders once the returned time + updatedelay passes)
     _hide_list_layers()
     cls(varinit.topbottom)
-    draw_text(varinit.topbottom, TITLE, 0, TOP)
+    if not draw_logo(varinit.topbottom, varinit.if_long, varinit.if_tall):
+        draw_text(varinit.topbottom, TITLE, 0, TOP)
     refresh()
     return time.monotonic() - varinit.updatedelay + SPLASH_S
 
