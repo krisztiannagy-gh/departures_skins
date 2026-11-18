@@ -22,7 +22,11 @@ ubahn   pale green U-Bahn platform displays
         * under 1 minute: "*" switching between the two minute positions every 2 s
 
 Both: 2 departures in fixed 16 px blocks, all animations inside their block,
-system texts centred, no header or clock row.
+no header or clock row. Start-up and loading: the Wiener Linien logo (street) or
+the words WIENER LINIEN (U-Bahn). Other system texts left-aligned and vertically
+centred: street from the destination column in bold, U-Bahn from the left edge.
+Outage: "Derzeit keine Echtzeitinfo!" / "Fahrplanaushang bitte beachten!"
+alternating every 4 s; nothing due: "Derzeit keine Abfahrten".
 
 Long names (street): one line if it fits, else split over two lines; if that
 still doesn't fit and wl_shorten is on, Bahnhof -> Bhf. and ...straße ->
@@ -49,7 +53,7 @@ DEST_X = LINE_COL + 1   # street: where destinations start
 MIN_GAP = 3             # px kept clear between destination and minutes
 SCROLL_STEP_S = 0.06
 SCROLL_PAUSE_S = 2.0
-SQUARE = 10             # street: under-1-minute square
+SQUARE = 14             # street: under-1-minute square (7x7 quarters, line-number height)
 SQUARE_S = 0.5
 STAR_S = 2.0            # U-Bahn: "*" position change
 UB_TOP = 3              # U-Bahn: glyph top in the block (capitals on rows 5-11)
@@ -255,7 +259,7 @@ def _parse(departures, max_rows, max_min):
     for d in departures:
         if not isinstance(d, list) or len(d) < 4: continue
         line, dest, mins = str(d[1]).strip(), str(d[2]).split("(")[0].strip(), str(d[3]).strip()
-        arriving = len(d) > 7 and bool(d[7])
+        arriving = (len(d) > 7 and bool(d[7])) or mins == "0"
         step_free = len(d) > 8 and bool(d[8])       # filled once a WL data source exists
         if not arriving and mins.isdigit() and int(mins) > max_min: continue
         key = (line, dest, "now" if arriving else mins)
@@ -316,7 +320,7 @@ def draw_line2(bmp, r, color=1):
 
 def draw_square(bmp, r, width, phase, color=1):
     """Under 1 minute: bottom-left quarter (phase 0) / top-right quarter (phase 1)."""
-    x0, y0 = width - SQUARE, r["y0"] + 2
+    x0, y0 = width - SQUARE, r["y0"]
     half = SQUARE // 2
     clear_rect(bmp, x0, y0, SQUARE, SQUARE)
     if phase == 0: fill_rect(bmp, x0, y0 + half, half, half, color)
@@ -398,16 +402,15 @@ def tick_rows(bmp, rows, style, width, now, color=1):
                 changed = True
     return changed
 
-# --- centred system texts --------------------------------------------------------
-TXT = {
-    "loading": ("Abfahrtszeiten werden geladen", None),
-    "offline": ("Echtzeitinformation derzeit nicht verfügbar", "Echtzeitinformation nicht verfügbar"),
-    "empty": ("In den nächsten {} Minuten keine Abfahrt", "Keine Abfahrt in den nächsten {} Min"),
+# --- system texts ------------------------------------------------------------
+# Real boards show them left-aligned: street style from the destination column
+# (bold), U-Bahn style from the left edge. Each entry is a list of pages; pages
+# alternate every PAGE_S seconds.
+PAGE_S = 4
+PAGES = {
+    "offline": (("Derzeit keine", "Echtzeitinfo!"), ("Fahrplanaushang", "bitte beachten!")),
+    "empty": (("Derzeit keine", "Abfahrten"),),
 }
-# fixed line breaks where the natural wrap would look odd
-BREAKS = {"Abfahrtszeiten werden geladen": ["Abfahrtszeiten", "werden geladen"],
-          "Echtzeitinformation derzeit nicht verfügbar": ["Echtzeitinformation", "derzeit nicht verfügbar"],
-          "Echtzeitinformation nicht verfügbar": ["Echtzeitinformation", "nicht verfügbar"]}
 
 def wrap_text(font, text, width):
     lines, cur = [], ""
@@ -419,37 +422,35 @@ def wrap_text(font, text, width):
     if cur: lines.append(cur)
     return [hard_cut(font, l, width) for l in lines]
 
-def centred_lines(style, text, width, height, alt=None):
-    """[(text, x, y)] centred on the board. U-Bahn: capitals, 1 line per block."""
+def text_lines(style, lines, width, height):
+    """[(text, x, y)] left-aligned, vertically centred. U-Bahn: capitals, one per block."""
     if style == "ubahn":   # glyph rows 0-1 hold umlaut dots, capitals are rows 2-8
-        font, pitch, top, body, prep = _FONTS["u"], BLOCK, 2, 7, _upper
+        font, pitch, top, body, x = _FONTS["u"], BLOCK, 2, 7, 0
+        lines = [_upper(l) for l in lines]
     else:
-        font, pitch, top, body, prep = _FONTS["s"], 8, 0, 7, (lambda t: t)
-    max_lines = max(1, height // pitch)
-    lines = None
-    for t in (text, alt):
-        if not t: continue
-        if t in BREAKS: cand = [prep(l) for l in BREAKS[t]]
-        else: cand = wrap_text(font, prep(t), width)
-        if len(cand) <= max_lines and all(text_width(font, l) <= width for l in cand):
-            lines = cand; break
-        if lines is None: lines = cand
-    lines = lines[:max_lines]
-    span = (len(lines) - 1) * pitch + body
+        font, pitch, top, body, x = _FONTS["t"], 8, 0, 7, DEST_X
+    avail = width - x
+    out_lines = []
+    for l in lines: out_lines += wrap_text(font, l, avail)
+    out_lines = out_lines[:max(1, height // pitch)]
+    span = (len(out_lines) - 1) * pitch + body
     y = (height - span) // 2 - top
-    out = []
-    for i, l in enumerate(lines):
-        out.append((l, (width - text_width(font, l)) // 2, y + i * pitch))
-    return font, out
+    return font, [(l, x, y + i * pitch) for i, l in enumerate(out_lines)]
 
-def draw_centred(bmp, style, text, width, height, alt=None, color=1):
-    font, lines = centred_lines(style, text, width, height, alt)
-    for l, x, y in lines: draw_text(bmp, font, l, x, y, color)
+def draw_lines(bmp, style, lines, width, height, color=1):
+    font, out = text_lines(style, lines, width, height)
+    for l, x, y in out: draw_text(bmp, font, l, x, y, color)
 
-def status_text(kind, settings):
-    t, alt = TXT[kind]
-    n = int(settings.get("wl_max_minutes", 60))
-    return t.format(n), (alt.format(n) if alt else None)
+def draw_title(bmp, style, width, height, color=1):
+    """Start-up / loading: the logo on street boards, the words on U-Bahn boards."""
+    logo = _FONTS.get("logo", {}).get("L") if style != "ubahn" else None
+    if logo and height >= _FONTS["logo"]["_h"]:
+        draw_text(bmp, _FONTS["logo"], "L", (width - logo[0]) // 2, (height - _FONTS["logo"]["_h"]) // 2, color)
+        return
+    U = _FONTS.get("u") or _FONTS["s"]
+    t = _upper(TITLE) if style == "ubahn" else TITLE
+    top, body = (2, 7) if style == "ubahn" else (0, 7)
+    draw_text(bmp, U, t, (width - text_width(U, t)) // 2, (height - body) // 2 - top, color)
 
 # --- network handling (same as the BKK skin) -------------------------------------
 STALE_MAX_S = 120
@@ -493,7 +494,8 @@ def style_of(settings):
 def board_color(style, brightness):
     """Palette colour for the style, scaled like the app's own colours()."""
     f = int(brightness) + 1
-    r, g, b = (f * 36, f * 46, f * 8) if style == "ubahn" else (f * 50, f * 24, 0)
+    # full brightness: street #FF9E00, U-Bahn #C8E000
+    r, g, b = (f * 40, f * 224 // 5, 0) if style == "ubahn" else (f * 51, f * 158 // 5, 0)
     return (min(255, r) << 16) | (min(255, g) << 8) | min(255, b)
 
 # --- host glue ----------------------------------------------------------------
@@ -539,12 +541,31 @@ def _prepare():
     load_fonts(_style)
     _apply_color()
 
+_page = {"i": 0, "t": 0.0, "info": None}
+
+def _draw_status(bmp):
+    w, h = varinit.if_long, varinit.if_tall
+    clear_rect(bmp, 0, 0, w, h)
+    if _status in ("loading", "splash"): draw_title(bmp, _style, w, h)
+    elif _status == "info": draw_lines(bmp, _style, [_page["info"]], w, h)
+    else:
+        pages = PAGES[_status]
+        draw_lines(bmp, _style, pages[_page["i"] % len(pages)], w, h)
+
 def _show_status(bmp, kind, text=None):
     global _status, _rows
+    if kind != _status: _page["i"] = 0
     _rows, _status = [], kind
-    alt = None
-    if text is None: text, alt = status_text(kind, _settings())
-    draw_centred(bmp, _style, text, varinit.if_long, varinit.if_tall, alt)
+    _page["info"], _page["t"] = text, time.monotonic() + PAGE_S
+    _draw_status(bmp)
+
+def _tick_pages(now):
+    if _status in PAGES and len(PAGES[_status]) > 1 and now >= _page["t"]:
+        _page["i"] += 1
+        _page["t"] = now + PAGE_S
+        _draw_status(varinit.topbottom)
+        return True
+    return False
 
 def _show_rows(bmp, departures):
     global _status, _rows
@@ -616,6 +637,7 @@ def animate_tick():
     now = time.monotonic()
     _apply_color()                      # brightness changes reset the app's colour
     changed = _check_bridge(now)
+    changed = _tick_pages(now) or changed
     if _rows:
         changed = tick_rows(varinit.topbottom, _rows, _style, varinit.if_long, now) or changed
     if changed: refresh()
@@ -633,8 +655,8 @@ def on_enter():
     _prepare()
     _hide_list_layers()
     cls(varinit.topbottom)
-    draw_centred(varinit.topbottom, _style, TITLE, varinit.if_long, varinit.if_tall)
     _status = "splash"
+    _draw_status(varinit.topbottom)
     refresh()
     return time.monotonic() - varinit.updatedelay + SPLASH_S
 
