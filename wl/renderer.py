@@ -16,7 +16,8 @@ street  amber LED stop displays used for trams and buses
 
 ubahn   pale green U-Bahn platform displays
         U4 HÜTTELDORF            2
-        * destination always in capitals, one character of space after the line
+        * bold 7 px capitals, destination always in capitals, one character
+          of space after the line
         * "_" before the minutes when step-free (not in the T-Skylt data yet)
         * under 1 minute: "*" switching between the two minute positions every 2 s
 
@@ -51,6 +52,7 @@ SCROLL_PAUSE_S = 2.0
 SQUARE = 10             # street: under-1-minute square
 SQUARE_S = 0.5
 STAR_S = 2.0            # U-Bahn: "*" position change
+UB_TOP = 3              # U-Bahn: glyph top in the block (capitals on rows 5-11)
 SPLASH_S = 3
 TITLE = "Wiener Linien"
 
@@ -326,12 +328,14 @@ def build_ubahn(departures, width, height, settings):
     scroll = int(settings.get("dest_scroll", 0))
     line_w = max([text_width(U, "U4")] + [text_width(U, _upper(r["line"])) for r in rows])
     dest_x = line_w + 1 + text_width(U, "U") + 1
-    mins_w = text_width(U, "_88")
-    dest_w = max(0, width - mins_w - MIN_GAP - dest_x)
     for i, r in enumerate(rows):
         r["y0"] = i * BLOCK
         r["line"] = _upper(r["line"])
         name = _upper(strip_su(r["dest"])[0])
+        # each row keeps clear only what its own minutes need ("2", "_11", "*")
+        m = "88" if r["arriving"] else r["mins"]
+        mins_w = text_width(U, ("_" if r["step_free"] else "") + m)
+        dest_w = max(0, width - mins_w - 2 - dest_x)
         r["dest_x"], r["dest_w"] = dest_x, dest_w
         if text_width(U, name) <= dest_w: r["scroll"] = False
         elif scroll: r["scroll"] = True
@@ -341,27 +345,27 @@ def build_ubahn(departures, width, height, settings):
 
 def draw_ubahn_row(bmp, r, width, color=1):
     U = _FONTS["u"]
-    y = r["y0"] + 2
+    y = r["y0"] + UB_TOP
     draw_text(bmp, U, r["line"], 0, y, color)
     draw_ubahn_dest(bmp, r, color)
     if not r["arriving"]:
         m = r["mins"]
         x = width - text_width(U, m)
         draw_text(bmp, U, m, x, y, color)
-        if r["step_free"]: draw_text(bmp, U, "_", x - 6, y, color)
+        if r["step_free"]: draw_text(bmp, U, "_", x - text_width(U, "_") - 1, y, color)
 
 def draw_ubahn_dest(bmp, r, color=1):
-    y = r["y0"] + 2
-    clear_rect(bmp, r["dest_x"], y, r["dest_w"], 11)
+    y = r["y0"] + UB_TOP
+    clear_rect(bmp, r["dest_x"], y, r["dest_w"], _FONTS["u"]["_h"])
     draw_text(bmp, _FONTS["u"], r["name"], r["dest_x"] - r["offset"], y, color,
               clip_l=r["dest_x"], clip_r=r["dest_x"] + r["dest_w"])
 
 def draw_star(bmp, r, width, phase, color=1):
     """Under 1 minute: '*' in the ones (phase 0) or tens (phase 1) minute position."""
     U = _FONTS["u"]
-    y = r["y0"] + 2
+    y = r["y0"] + UB_TOP
     slot = text_width(U, "8") + 1
-    clear_rect(bmp, width - 2 * slot, y, 2 * slot, 11)
+    clear_rect(bmp, width - 2 * slot, y, 2 * slot, U["_h"])
     x = width - text_width(U, "*") - (slot if phase else 0)
     draw_text(bmp, U, "*", x, y, color)
 
@@ -417,8 +421,8 @@ def wrap_text(font, text, width):
 
 def centred_lines(style, text, width, height, alt=None):
     """[(text, x, y)] centred on the board. U-Bahn: capitals, 1 line per block."""
-    if style == "ubahn":   # glyph rows 0-1 hold umlaut dots, capitals are rows 2-10
-        font, pitch, top, body, prep = _FONTS["u"], BLOCK, 2, 9, _upper
+    if style == "ubahn":   # glyph rows 0-1 hold umlaut dots, capitals are rows 2-8
+        font, pitch, top, body, prep = _FONTS["u"], BLOCK, 2, 7, _upper
     else:
         font, pitch, top, body, prep = _FONTS["s"], 8, 0, 7, (lambda t: t)
     max_lines = max(1, height // pitch)

@@ -9,12 +9,12 @@ capital A/O/U umlauts shrink to 4 px so the dots still fit.
 Font "b": 14 px line numbers, font "x": 9 px line-number suffix (10A, 13A),
 font "i": 7 x 7 icons (S-Bahn, U-Bahn, wheelchair).
 
-U-Bahn boards (pale green), font "u": capitals 5 x 9 (rows 2-10), umlaut dots
-on row 0 with row 1 empty, so every glyph is 11 rows tall.
+U-Bahn boards (pale green), font "u": bold capitals, 7 px tall (rows 2-8) with
+2 px stems, umlaut dots on row 0 with row 1 empty, so every glyph is 9 rows tall.
 
 "b", "x" and "u" are built from the same 5 x 7 capitals and digits as the
-BKK skin, stretched (rows 1 and 5 doubled for 9 px; every row doubled and the
-stems doubled for 14 px).
+BKK skin: "x" stretched to 9 px (rows 1 and 5 doubled), "b" to 14 px (every
+row and the stems doubled), "u" made bold (each column smeared one to the right).
 """
 import json, os
 
@@ -196,18 +196,27 @@ BIG[" "] = ["..."] * 14
 # --- icons "i" (7 x 7) ----------------------------------------------------------
 ICONS = {
     "S": ["..###..", ".#...#.", "##.####", "##...##", "####.##", ".#...#.", "..###.."],   # S-Bahn
-    "U": ["..###..", ".#...#.", "#.#.#.#", "#.#.#.#", "#.#.#.#", ".#.#.#.", "..###.."],   # U-Bahn
+    "U": ["..###..", ".#.#.#.", "##.#.##", "##.#.##", "##.#.##", ".#...#.", "..###.."],   # U-Bahn
     "W": ["..#....", ".......", "..###..", ".#.#...", "#..###.", "#....#.", ".###..#"],   # wheelchair
 }
 
-# --- U-Bahn font "u" (5 x 9 capitals, 11 rows incl. umlaut dots) ---------------
+# --- U-Bahn font "u" (bold 7 px capitals, 9 rows incl. umlaut dots) ----------
+def bold(rows):
+    """Every lit pixel also lights the one to its right: 2 px stems, 1 px bars."""
+    w = len(rows[0]); out = []
+    for r in rows:
+        r2 = r + "."
+        out.append("".join("#" if r2[i] == "#" or (i > 0 and r2[i - 1] == "#") else "."
+                           for i in range(w + 1)))
+    return out
+
 U = {}
 for c, rows in B5.items():
-    U[c] = ["." * len(rows[0])] * 2 + rows9(rows)
+    U[c] = ["." * (len(rows[0]) + 1)] * 2 + bold(rows)
 for c, base in (("Ä", "A"), ("Ö", "O"), ("Ü", "U")):
-    U[c] = [".#.#.", "....."] + rows9(B5[base])
-U["_"] = ["....."] * 10 + ["#####"]
-U["?"] = U.get("?")
+    U[c] = ["##..##", "......"] + bold(B5[base])
+U["_"] = ["......"] * 8 + ["######"]
+U[" "] = ["..."] * 9
 
 def pack(glyphs, h):
     out = {"_h": h}
@@ -221,7 +230,7 @@ def pack(glyphs, h):
 
 def build():
     street = {"s": pack(S, 7), "b": pack(BIG, 14), "x": pack(SUF, 9), "i": pack(ICONS, 7)}
-    ubahn = {"u": pack(U, 11)}
+    ubahn = {"u": pack(U, 9)}
     return street, ubahn
 
 if __name__ == "__main__":

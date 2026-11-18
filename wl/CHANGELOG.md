@@ -2,6 +2,11 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.990 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v2 — Bold U-Bahn font, Vienna-style icons (2026-11-18)
+- **U-Bahn style:** new bold font, 7 px capitals with 2 px strokes (was 9 px and thin), closer to the real platform displays. The `*` and the `_` follow the same font.
+- **U-Bahn style:** each row keeps clear only what its own minutes need, so long names like HEILIGENSTADT are no longer cut.
+- **Street style:** the U-Bahn icon is now a filled circle with the U cut out, matching the S-Bahn icon (both drawn after the Vienna logos).
+
 ## v1 — First Vienna boards (2026-11-17)
 - **Two board styles**, picked under *Board style* in the skin's settings:
   - **Street (tram & bus):** amber LED stop display. Big line number (letter suffix smaller, e.g. 13A), destination on one or two lines, S-Bahn and U-Bahn icons at the end of the name, minutes as a plain number on the right.
