@@ -76,5 +76,11 @@
   "commit": "19ed4bbf01dd3a4f43acb2c42b91d609b0c124e8",
   "title": "Wiener Linien skin v4 — smaller font files",
   "notes": "wl-v4.md"
+ },
+ {
+  "tag": "bkk-v10",
+  "commit": "7bb7610d489e22618f4d4b729551150297f7cb46",
+  "title": "BKK skin v10 — readable í and Í",
+  "notes": "bkk-v10.md"
  }
 ]
