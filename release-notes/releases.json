@@ -64,5 +64,17 @@
   "commit": "269012c4ac56cc212a29a4fe3627ede9b1777197",
   "title": "BKK skin v8 — passenger announcements",
   "notes": "bkk-v8.md"
+ },
+ {
+  "tag": "bkk-v9",
+  "commit": "19ed4bbf01dd3a4f43acb2c42b91d609b0c124e8",
+  "title": "BKK skin v9 — smaller font and logo files",
+  "notes": "bkk-v9.md"
+ },
+ {
+  "tag": "wl-v4",
+  "commit": "19ed4bbf01dd3a4f43acb2c42b91d609b0c124e8",
+  "title": "Wiener Linien skin v4 — smaller font files",
+  "notes": "wl-v4.md"
  }
 ]
