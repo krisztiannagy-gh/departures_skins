@@ -103,7 +103,9 @@ lower_accent("u", ACUTE, "ú"); lower_accent("u", UML, "ü")
 G["ő"] = [DBL[0], DBL[1], ".....", ".###.", "#...#", "#...#", ".###."]
 G["ű"] = [DBL[0], DBL[1], ".....", "#...#", "#...#", "#..##", ".##.#"]
 lower_accent("a", UML, "ä")
-G["í"] = [".#", "#.", "#.", "#.", "#.", "#.", "#."]
+# í / Í: a narrow stem would merge with a touching accent, so (like ő/ű) the
+# letter shrinks to 4 px with an empty row under the 2 px accent (2026-11-20)
+G["í"] = [".#", "#.", "..", "#.", "#.", "#.", "#."]
 
 # accented capitals: 5 px tall body (rows 2-6) under the accent
 CAP5 = {
@@ -116,7 +118,7 @@ CAP5 = {
 for c, base, acc in (("Á", "A", ACUTE), ("É", "E", ACUTE), ("Ó", "O", ACUTE), ("Ö", "O", UML),
                      ("Ő", "O", DBL), ("Ú", "U", ACUTE), ("Ü", "U", UML), ("Ű", "U", DBL), ("Ä", "A", UML)):
     G[c] = [acc[0], acc[1]] + CAP5[base]
-G["Í"] = ["..#", ".#.", "###", ".#.", ".#.", ".#.", "###"]
+G["Í"] = ["..#", ".#.", "...", "###", ".#.", ".#.", "###"]
 G["ß"] = [".##.", "#..#", "#..#", "#.#.", "#..#", "#..#", "#.#."]
 
 # --- punctuation ---------------------------------------------------------
