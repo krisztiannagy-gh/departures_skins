@@ -301,7 +301,8 @@ def pack(glyphs, h):
         assert len(rows) == h, (c, len(rows))
         w = len(rows[0])
         assert all(len(r) == w for r in rows), c
-        out[c] = [w] + ["".join("1" if p == "#" else "0" for p in r) for r in rows]
+        # each row as a number (bit w-1 = leftmost column): far smaller than "0101" strings
+        out[c] = [w] + [int("".join("1" if p == "#" else "0" for p in r), 2) for r in rows]
     return out
 
 def build():

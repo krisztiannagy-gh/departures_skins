@@ -2,6 +2,9 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.986 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v9 — Smaller files (2026-11-20)
+- Font and logo files store each pixel row as a number instead of a "0101" string: **5.3 KB less** on the box (font 7.1 → 3.1 KB, logo 1.9 → 0.5 KB). Same pixels; older files still load.
+
 ## v8 — Passenger announcements (2026-11-20)
 - **Draws the passenger announcements** set up on the settings page (needs Departures 0.992).
   - **Full-screen PA:** replaces the departures; each row is fixed or scrolling.

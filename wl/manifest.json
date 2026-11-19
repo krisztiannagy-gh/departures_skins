@@ -1,1 +1,1 @@
-{"files": ["renderer.py", "wl_street.json", "wl_ubahn.json"], "version": 3, "label": "Wiener Linien (Vienna)"}
+{"files": ["renderer.py", "wl_street.json", "wl_ubahn.json"], "version": 4, "label": "Wiener Linien (Vienna)"}

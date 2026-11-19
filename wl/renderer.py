@@ -94,7 +94,7 @@ def load_fonts(style, base="skins/wl/"):
         font = {"_h": h}
         for c, g in glyphs.items():
             if c == "_h": continue
-            font[c] = (g[0], tuple(int(r, 2) for r in g[1:]))
+            font[c] = (g[0], tuple(r if isinstance(r, int) else int(r, 2) for r in g[1:]))   # older files: "0101" strings
         _FONTS[name] = font
     if want == "street":                       # S/U icons usable as text characters
         _FONTS["s"][ICON_S] = _FONTS["i"]["S"]

@@ -2,6 +2,9 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.990 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v4 — Smaller font files (2026-11-20)
+- Font files store each pixel row as a number instead of a "0101" string: **15 KB less** on the box (street 19.7 → 7.6 KB, U-Bahn 4.5 → 1.7 KB). Same pixels; older files still load.
+
 ## v3 — Real-board texts, logo, bigger departing square (2026-11-18)
 - **Departing now (street):** the square is now 14×14 px, the height of the line number. Each lit quarter is 7×7 px, level with one destination line.
 - **"0 minutes" counts as departing now:** a departure sent as 0 minutes shows the square (street) or `*` (U-Bahn) instead of a plain 0.

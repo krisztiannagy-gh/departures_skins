@@ -85,7 +85,8 @@ ABBREVIATIONS = (
 _FONT = None
 
 def load_font(path="skins/bkk/bkk_font.json"):
-    """Glyph rows become int bitmasks (bit (w-1-col) = column col) for speed."""
+    """Glyph rows are int bitmasks (bit (w-1-col) = column col); older font
+    files stored them as "0101" strings, which are still accepted."""
     global _FONT
     with open(path) as f:
         raw = json.load(f)
@@ -93,7 +94,7 @@ def load_font(path="skins/bkk/bkk_font.json"):
     for c, g in raw.items():
         if not isinstance(g, list): continue
         w = g[0]
-        font[c] = (w, tuple(int(r, 2) for r in g[1:]))
+        font[c] = (w, tuple(r if isinstance(r, int) else int(r, 2) for r in g[1:]))
     _FONT = font
     return font
 
@@ -288,7 +289,7 @@ def load_logo(path="skins/bkk/bkk_logo.json"):
     global _LOGO
     try:
         with open(path) as f: d = json.load(f)
-        _LOGO = (d["w"], d["h"], tuple(int(r, 2) for r in d["rows"]))
+        _LOGO = (d["w"], d["h"], tuple(r if isinstance(r, int) else int(r, 2) for r in d["rows"]))
     except Exception as e:
         print("BKK skin: no logo", e); _LOGO = None
 
