@@ -2,6 +2,14 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.986 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v8 — Passenger announcements (2026-11-20)
+- **Draws the passenger announcements** set up on the settings page (needs Departures 0.992).
+  - **Full-screen PA:** replaces the departures; each row is fixed or scrolling.
+  - **Scrolling PA / Reminder:** in the bottom row; departures, status screens and static mode use the rows above. The loading bar is left out while a PA scrolls there.
+- **Request timing:** while a bottom-row PA scrolls, the request waits for the separator once the data is a minute old (at most 2 minutes). No requests under a full-screen PA, except one every 30 minutes for the clock while a PA has a start or end time. Fresh departures right after a full-screen PA.
+- **Spare departures:** asks for 8, counts them down between requests.
+- **Font:** new characters `% " „ ” “ ’ – — ; = @ # € < [ ] °`.
+
 ## v7 — BKK logo at start-up and while loading (2026-11-18)
 - **Start-up:** the BKK logo (Budapesti Közlekedési Központ), centred, for 3 s, instead of the "BKK FUTÁR" text.
 - **Loading and connecting:** the logo stays up with a thin amber bar on the bottom row. The bar fills from left to right, then empties from left to right, and repeats.

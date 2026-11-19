@@ -35,17 +35,29 @@ stands still while a request is running: the box can't animate during one.)
 Panels too small for the logo (94 x 19) show
 the text "BKK FUTÁR" top left instead, and the usual "Adatok betöltése" screen.
 
+Passenger announcements (needs Departures 0.992, its pa.py engine): a
+full-screen PA replaces the board (fixed rows drawn here, scrolling rows as
+moving TileGrids); a Scrolling PA or Reminder takes the bottom row, the
+departures and status screens use the rows above. While a bottom-row PA
+scrolls, departure requests wait for a separator (data at most ~1-2 min old,
+spare rows counted down meanwhile); a full-screen PA makes none, except for
+the clock when a PA has a start or end time.
+
 Contract: on_enter(), render(), animate_tick(), message_active(),
 refresh_settings(), on_exit()
 """
 import time, json
 
 try:
-    import varinit
+    import varinit, displayio
     from functions import cls, refresh, get_departure
     _HOST = True
 except ImportError:          # desktop preview / tests
     _HOST = False
+try:
+    import pa as PA          # passenger announcements engine (Departures 0.992+)
+except ImportError:
+    PA = None
 
 # --- constants ----------------------------------------------------------------
 TOP = 1                 # empty pixel rows above the first departure
@@ -283,11 +295,15 @@ def load_logo(path="skins/bkk/bkk_logo.json"):
 def logo_fits(width, height):
     return _LOGO is not None and width >= _LOGO[0] and height >= _LOGO[1] + 2
 
-def draw_logo(bmp, width, height, color=1):
-    """Logo centred on the board. Returns False if it doesn't fit."""
+def draw_logo(bmp, width, height, color=1, max_y=None):
+    """Logo centred on the board. Returns False if it doesn't fit.
+    max_y: the logo must end above this row (bottom-row PA); it stays at its
+    usual place if it already does, otherwise it's centred above it."""
     if not logo_fits(width, height): return False
     w, h, rows = _LOGO
     x0, y0 = (width - w) // 2, (height - h) // 2
+    if max_y is not None and y0 + h > max_y:
+        y0 = max(0, (max_y - h) // 2)
     for r in range(h):
         bits = rows[r]
         if not bits: continue
@@ -305,8 +321,8 @@ def bar_span(now, width):
     if t < 1: return 0, int(e(t) * width + 0.5)
     return int(e(t - 1) * width + 0.5), width
 
-def draw_static(bmp, width, height, settings, color=1):
-    if settings.get("bkk_static_style", "text") == "logo" and draw_logo(bmp, width, height, color):
+def draw_static(bmp, width, height, settings, color=1, max_y=None):
+    if settings.get("bkk_static_style", "text") == "logo" and draw_logo(bmp, width, height, color, max_y):
         return
     draw_text(bmp, TITLE, 0, TOP, color)
 
@@ -389,7 +405,7 @@ def build_status(kind, width, height, settings, text=None):
 
 def draw_status(bmp, st, color=1):
     if st["kind"] == "logo":
-        draw_logo(bmp, st["w"], st["h"], color)
+        draw_logo(bmp, st["w"], st["h"], color, st.get("max_y"))
         st["frame"] = -1
         return
     if st["header"]: draw_text(bmp, TITLE, 0, TOP, color)
@@ -399,6 +415,7 @@ def draw_status(bmp, st, color=1):
 def tick_status(bmp, st, now, color=1):
     """Redraw the icon when its frame changes. Returns True if it changed."""
     if st and st["kind"] == "logo":                  # loading bar on the bottom row
+        if st.get("max_y") is not None: return False  # ...unless a PA scrolls there
         span = bar_span(now, st["w"])
         if span == st["frame"]: return False
         st["frame"] = span
@@ -455,7 +472,10 @@ def age_rows(rows, age_s):
 # --- host glue ----------------------------------------------------------------
 _rows = []
 _status = None
-_net = {"good": None, "good_t": 0.0, "fails": 0, "bridging": False, "bridge_min": -1, "check_t": 0.0, "start_t": 0.0}
+_view = {"kind": None, "status": None, "text": None}    # what the departures area shows
+_net = {"good": None, "good_t": 0.0, "fails": 0, "bridging": False, "bridge_min": -1,
+        "check_t": 0.0, "start_t": 0.0, "force": False}
+_splash = {"done": False}
 
 def _settings():
     return varinit.settings
@@ -477,12 +497,179 @@ def _host_texts():
     except Exception:
         return (), ()
 
+# --- passenger announcements ----------------------------------------------------
+# The engine (the app's pa.py) decides what is shown when; this skin draws it.
+# Fixed full-screen rows go into the board bitmap. Every scrolling text (full-
+# screen scrolling rows, the bottom-row Scrolling PA / Reminder) is rendered once
+# into its own 1-bit bitmap in a TileGrid with a transparent background that only
+# moves, which is cheap enough for smooth scrolling on the box.
+PA_FETCH_AGE_S = 60     # bottom-row PA: request at the next separator once data is this old
+PA_FETCH_MAX_S = 120    # ...and in any case once it's this old
+_pa = None              # pa.Engine while the skin runs on a big enough panel
+_pa_layer = {"group": None, "pal": None, "tgs": {}}
+_layout = {"now": "plain"}      # plain | bottom | fs
+
+def _rows_n():
+    return max(1, varinit.if_tall // PITCH)
+
+def _bottom_y():
+    return TOP + (_rows_n() - 1) * PITCH
+
+def _avail_h():
+    """Height the departures / status screens may use."""
+    return _bottom_y() if _layout["now"] == "bottom" else varinit.if_tall
+
+def _pa_start():
+    global _pa
+    _pa = None
+    if PA is None or not _HOST: return
+    if varinit.if_long < PA.MIN_PANEL_W or _rows_n() < 2: return
+    _pa = PA.start(text_width, varinit.if_long, _rows_n())
+    pal = displayio.Palette(2)
+    pal[0] = 0
+    pal.make_transparent(0)
+    pal[1] = varinit.palette[1]
+    grp = displayio.Group()
+    varinit.group.append(grp)
+    _pa_layer.update({"group": grp, "pal": pal, "tgs": {}})
+
+def _pa_stop():
+    global _pa
+    grp = _pa_layer["group"]
+    if grp is not None:
+        try: varinit.group.remove(grp)
+        except Exception: pass
+    _pa_layer.update({"group": None, "pal": None, "tgs": {}})
+    if PA is not None: PA.stop()
+    _pa = None
+    _layout["now"] = "plain"
+
+def _pa_layout():
+    if _pa is None: return "plain"
+    if _pa.fullscreen(): return "fs"
+    return "bottom" if _pa.bottom() is not None else "plain"
+
+def _pa_want():
+    """key -> (Strip, y) for everything that scrolls right now."""
+    want = {}
+    if _pa is None: return want
+    if _pa.fullscreen():
+        for i, r in enumerate(_pa.fs["rows"]):
+            if isinstance(r, PA.Strip): want["fs%d" % i] = (r, TOP + i * PITCH)
+    else:
+        b = _pa.bottom()
+        if b is not None: want["bot"] = (b, _bottom_y())
+    return want
+
+def _pa_sync(now_ms):
+    """Create, remove and move the scrolling TileGrids. True if anything changed."""
+    lay = _pa_layer
+    grp, tgs = lay["group"], lay["tgs"]
+    if grp is None: return False
+    try:
+        if lay["pal"][1] != varinit.palette[1]: lay["pal"][1] = varinit.palette[1]   # brightness / tone
+    except Exception: pass
+    want = _pa_want()
+    changed = False
+    for k in list(tgs.keys()):
+        if k not in want or tgs[k]["strip"] is not want[k][0]:
+            try: grp.remove(tgs[k]["tg"])
+            except Exception: pass
+            del tgs[k]
+            changed = True
+    for k, (st, y) in want.items():
+        if k in tgs: continue
+        bmp = displayio.Bitmap(st.w, 7, 2)
+        for x, t in st.items:
+            draw_text(bmp, t, x, 0, 1, clip_r=st.w + 8)
+        tg = displayio.TileGrid(bmp, pixel_shader=lay["pal"], x=st.panel_w, y=y)
+        grp.append(tg)
+        tgs[k] = {"tg": tg, "bmp": bmp, "strip": st, "cut": st.w, "clr": st.w}
+        changed = True
+    for d in tgs.values():
+        st, tg, bmp = d["strip"], d["tg"], d["bmp"]
+        x = st.x(now_ms)
+        if st.limit < st.w:
+            # cut short (reminder switched off / Scrolling PA waiting): blank
+            # what comes after the cut just before it would enter the panel
+            if d["cut"] != st.limit: d["cut"], d["clr"] = st.limit, st.limit
+            stop = min(st.w, st.panel_w - x + 2)
+            for col in range(d["clr"], stop):
+                for yy in range(7): bmp[col, yy] = 0
+            if stop > d["clr"]: d["clr"] = stop
+        if tg.x != x:
+            tg.x = x
+            changed = True
+    return changed
+
+def _redraw():
+    """Redraw the board bitmap after the PA layout changed (full screen on/off,
+    bottom row taken/given back)."""
+    global _rows, _status
+    bmp = varinit.topbottom
+    w, h = varinit.if_long, varinit.if_tall
+    cls(bmp)
+    if _layout["now"] == "fs":
+        _rows, _status = [], None
+        for i, r in enumerate(_pa.fs["rows"]):
+            if isinstance(r, str): draw_text(bmp, r, 0, TOP + i * PITCH)
+        return
+    by = _bottom_y() if _layout["now"] == "bottom" else None
+    if int(_settings().get("bkk_static", 0)):
+        _rows, _status = [], None
+        draw_static(bmp, w, h, _settings(), max_y=by)
+        return
+    kind = _view["kind"]
+    if kind == "rows" and _net["good"] is not None:
+        age = time.monotonic() - _net["good_t"]
+        if age <= STALE_MAX_S:
+            _show_rows(bmp, age_rows(_net["good"], age))
+            _net["bridge_min"] = int(age // 60)
+            return
+        _show_status(bmp, "loading")
+        return
+    if kind == "status":
+        _show_status(bmp, _view["status"], _view["text"])
+        return
+    _show_status(bmp, "loading")
+
+def _fetch():
+    """One departures request. The board can't animate during it, so the
+    scrolling PAs are told to resume where they stopped."""
+    t = PA.ms() if PA is not None else 0
+    data = get_departure(num="1")
+    if _pa is not None: _pa.shift(PA.ms() - t)
+    return data
+
+def _store_good(data):
+    kind, payload = classify(data, *_host_texts())
+    if kind == "ok":
+        _net["good"], _net["good_t"], _net["fails"] = payload, time.monotonic(), 0
+        _net["bridge_min"] = 0
+    return kind, payload
+
+def _hold():
+    """True keeps the host from calling render() (= no request) right now."""
+    if _pa is None: return False
+    if _net["force"]: return False
+    if _pa.fullscreen():
+        return not PA.clock_due()            # no departures visible: no requests
+    if _pa.bottom() is None or int(_settings().get("bkk_static", 0)): return False
+    if _status is not None or _net["good"] is None or _net["bridging"]:
+        return False                         # connecting / retrying works as usual
+    age = time.monotonic() - _net["good_t"]
+    if age >= PA_FETCH_MAX_S: return False
+    if age >= PA_FETCH_AGE_S and _pa.bottom().sep_visible(PA.ms()): return False
+    return True
+
 def _show_status(bmp, kind, text=None):
     global _status, _rows
     _rows = []
-    w, h = varinit.if_long, varinit.if_tall
-    if kind == "loading" and logo_fits(w, h):
-        _status = {"kind": "logo", "w": w, "h": h, "frame": -1}
+    _view.update({"kind": "status", "status": kind, "text": text})
+    w, h = varinit.if_long, _avail_h()
+    by = _bottom_y() if _layout["now"] == "bottom" else None
+    if kind == "loading" and logo_fits(w, varinit.if_tall):
+        _status = {"kind": "logo", "w": w, "h": varinit.if_tall, "frame": -1, "max_y": by}
     else:
         _status = build_status(kind, w, h, _settings(), text)
     draw_status(bmp, _status)
@@ -491,7 +678,8 @@ def _show_status(bmp, kind, text=None):
 def _show_rows(bmp, departures):
     global _status, _rows
     _status = None
-    _rows = build_rows(departures, varinit.if_long, varinit.if_tall, _settings())
+    _view.update({"kind": "rows", "status": None, "text": None})
+    _rows = build_rows(departures, varinit.if_long, _avail_h(), _settings())
     if not _rows:
         _show_status(bmp, "empty")
         return
@@ -502,32 +690,38 @@ def render():
     if _FONT is None: load_font()
     if _LOGO is None: load_logo()
     _hide_list_layers()
+    _splash["done"] = True
+    _net["force"] = False
     bmp = varinit.topbottom
     now = time.monotonic()
-    if int(_settings().get("bkk_static", 0)):
-        # static content instead of departures: nothing to fetch, nothing to animate
+    static = int(_settings().get("bkk_static", 0))
+    if static or _layout["now"] == "fs":
+        # nothing from the data is visible: request only to keep the box
+        # clock right while a PA waits for its start or end time
+        if _pa is not None and PA.clock_due():
+            _store_good(_fetch())
+            now = time.monotonic()
+        if _layout["now"] == "fs":
+            return now
         _rows, _status = [], None
+        _view.update({"kind": "static"})
         cls(bmp)
-        draw_static(bmp, varinit.if_long, varinit.if_tall, _settings())
+        draw_static(bmp, varinit.if_long, varinit.if_tall, _settings(),
+                    max_y=_bottom_y() if _layout["now"] == "bottom" else None)
         refresh()
         return now
     if _net["good"] is None and (_status is None or _status["kind"] != "offline"):
         cls(bmp)                                   # first data: say we're loading
         _show_status(bmp, "loading")
         refresh()
-    # ask the host for a few more rows than fit (duplicates get dropped), then
-    # put the user's own setting back so nothing else is affected
-    _md = varinit.settings.get("maxdest", 5)
-    varinit.settings["maxdest"] = max(int(_md), varinit.if_tall // PITCH + 3)
-    try: data = get_departure(num="1")
-    finally: varinit.settings["maxdest"] = _md
+    data = _fetch()
     now = time.monotonic()
-    fail_texts, prompt_texts = _host_texts()
-    kind, payload = classify(data, fail_texts, prompt_texts)
+    kind, payload = _store_good(data)
+    if _layout["now"] == "fs":                     # a full-screen PA came up meanwhile
+        return now
     cls(bmp)
     _net["bridging"] = False
     if kind == "ok":
-        _net["good"], _net["good_t"], _net["fails"] = payload, now, 0
         _show_rows(bmp, payload)
         refresh()
         return now
@@ -553,13 +747,15 @@ def render():
     return now + wait - varinit.updatedelay
 
 def _check_bridge(now):
-    """Between requests while showing last-known data: count the minutes down
-    and switch to 'Nincs kapcsolat' as soon as the data is too old."""
-    if not _net["bridging"] or now - _net["check_t"] < 5: return False
+    """Between requests while showing departures: count the minutes down (a
+    bottom-row PA spaces requests out to about a minute) and, after failed
+    requests, switch to 'Nincs kapcsolat' as soon as the data is too old."""
+    if _layout["now"] == "fs" or _view["kind"] != "rows" or _net["good"] is None: return False
+    if now - _net["check_t"] < 5: return False
     _net["check_t"] = now
     age = now - _net["good_t"]
     bmp = varinit.topbottom
-    if age > STALE_MAX_S:
+    if _net["bridging"] and age > STALE_MAX_S:
         _net["bridging"] = False
         cls(bmp); _show_status(bmp, "offline"); return True
     if int(age // 60) != _net["bridge_min"]:
@@ -569,26 +765,44 @@ def _check_bridge(now):
 
 def animate_tick():
     now = time.monotonic()
-    changed = _check_bridge(now)
+    changed = False
+    if _pa is not None and _splash["done"]:
+        _pa.update()
+        lay = _pa_layout()
+        if lay != _layout["now"]:
+            was_fs = _layout["now"] == "fs"
+            _layout["now"] = lay
+            _redraw()
+            if was_fs: _net["force"] = True       # fresh departures right after a full-screen PA
+            changed = True
+        changed = _pa_sync(PA.ms()) or changed
+    changed = _check_bridge(now) or changed
     if _rows:
         blink = max(100, int(_settings().get("arrival_blink_ms", 600))) / 1000
         changed = tick_rows(varinit.topbottom, _rows, now, blink) or changed
     elif _status:
         changed = tick_status(varinit.topbottom, _status, now) or changed
     if changed: refresh()
-    return False      # never hold back the regular refresh
+    if _net["force"]:
+        varinit.shared["scroll_timer"] = 0        # host: render (request) on its next pass
+    return _hold()
 
 def message_active():
     return False
 
 def refresh_settings():
+    if _layout["now"] == "fs":
+        return                                     # nothing of the departures is visible
     render()
 
 def on_enter():
     varinit.want_arrivals = True       # host keeps departures under 1 min for us
+    varinit.want_rows = 8              # spare departures between spaced-out requests
     load_font()
     load_logo()
     _net["start_t"] = time.monotonic()
+    _splash["done"] = False
+    _pa_start()
     # start-up logo, like a board coming on; the first departures follow after
     # SPLASH_S seconds (the host renders once the returned time + updatedelay passes)
     _hide_list_layers()
@@ -601,5 +815,7 @@ def on_enter():
 def on_exit():
     global _rows, _status
     varinit.want_arrivals = False
+    varinit.want_rows = 0
+    _pa_stop()
     _rows, _status = [], None
     cls(varinit.topbottom)
