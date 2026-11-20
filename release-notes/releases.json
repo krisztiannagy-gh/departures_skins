@@ -82,5 +82,11 @@
   "commit": "7bb7610d489e22618f4d4b729551150297f7cb46",
   "title": "BKK skin v10 — readable í and Í",
   "notes": "bkk-v10.md"
+ },
+ {
+  "tag": "bkk-v11",
+  "commit": "3625c28493f390b6ef71c898b7b5df7af3351aa7",
+  "title": "BKK skin v11 — i and í as on the real boards",
+  "notes": "bkk-v11.md"
  }
 ]
