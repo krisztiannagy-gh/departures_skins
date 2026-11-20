@@ -94,5 +94,11 @@
   "commit": "cf2d54d0d60ebcd23d236609db983b7770ff774b",
   "title": "BKK skin v12 — smoother PA scrolling",
   "notes": "bkk-v12.md"
+ },
+ {
+  "tag": "lu-v1",
+  "commit": "3717240ec01d4b2f4020823cbd6018daa1e367a2",
+  "title": "London Underground skin v1 — first release",
+  "notes": "lu-v1.md"
  }
 ]
