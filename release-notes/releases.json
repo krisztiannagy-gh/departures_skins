@@ -88,5 +88,11 @@
   "commit": "3625c28493f390b6ef71c898b7b5df7af3351aa7",
   "title": "BKK skin v11 — i and í as on the real boards",
   "notes": "bkk-v11.md"
+ },
+ {
+  "tag": "bkk-v12",
+  "commit": "cf2d54d0d60ebcd23d236609db983b7770ff774b",
+  "title": "BKK skin v12 — smoother PA scrolling",
+  "notes": "bkk-v12.md"
  }
 ]
