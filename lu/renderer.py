@@ -62,7 +62,7 @@ STALE_MAX_S = 120               # requests failing: keep counting down this long
 BACKOFF_S = (20, 30, 60)
 PREFER_IDLE_S = 60              # data younger than this waits for a still moment
 STALL_MS = 150                  # frame gap counted as a stall (timers shifted)
-COLOR = (51, 32, 0)             # x brightness factor 1..5 -> #FFA000 at full
+COLOR = (51, 23, 0)             # x brightness factor 1..5 -> #FF7300 at full (app amber is 50/20/0)
 SUFFIX = " underground station"
 FAIL_MARKERS = ("-", "*", "**", "***")
 ACCENT_FALLBACK = {"á": "a", "à": "a", "â": "a", "ä": "a", "é": "e", "è": "e", "ê": "e",
@@ -243,6 +243,13 @@ def mins_text(v):
     if v < 0: return ""
     return "1 min" if v == 1 else str(v) + " mins"
 
+def mins_place(v):
+    """Width the minutes are right-aligned by: always as if plural, so the "m"
+    stays in the same column when "2 mins" becomes "1 min" (the "s" spot stays
+    empty)."""
+    if v < 0: return 0
+    return ink_width(_F["r"], str(v) + " mins")
+
 def rotation(trains, now):
     """Indexes row 2 rotates through: train 2 always, 3..6 if due within 30 min."""
     out = [1] if len(trains) > 1 else []
@@ -260,7 +267,7 @@ class Item:
         self.width, self.cut = width, cut
         R = _F["r"]
         self.num_bmp = None
-        self.mins_val, self.mins_bmp, self.mins_ink, self.reserved = -1, None, 0, 0
+        self.mins_val, self.mins_bmp, self.mins_ink, self.reserved = -1, None, 0, 0   # mins_ink: placement width
         if kind == "dep":
             label = str(num) + " "
             self.num_bmp = text_bitmap(R, label)
@@ -292,7 +299,7 @@ class Item:
         R = _F["r"]
         if t:
             self.mins_bmp = text_bitmap(R, t)
-            self.mins_ink = ink_width(R, t)
+            self.mins_ink = mins_place(v)
         else:
             self.mins_bmp, self.mins_ink = None, 0
         if self.mins_ink > self.reserved:      # the column only ever grows
@@ -367,7 +374,7 @@ class Row:
         if it.dest_bmp is not None:
             blit_clipped(bmp, it.dest_bmp, it.dest_x, y, self.offset, self.offset + it.dest_w, b0, b1)
         if it.mins_bmp is not None:
-            blit_clipped(bmp, it.mins_bmp, width - it.mins_ink, y, 0, it.mins_ink, b0, b1)
+            blit_clipped(bmp, it.mins_bmp, width - it.mins_ink, y, 0, min(it.mins_bmp.width, it.mins_ink), b0, b1)
 
     def shift(self, d):
         self.t0 += d

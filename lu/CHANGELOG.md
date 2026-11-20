@@ -4,6 +4,10 @@ Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.9
 
 The font is Sean Petykowski's London Underground Dot Matrix Typeface (SIL Open Font License 1.1, see `OFL.txt`), redrawn as pixel pictures in `font_src.py`.
 
+## v3 — Minutes column and warmer amber (2026-11-20)
+- **Minutes:** the "m" stays in the same column when "2 mins" becomes "1 min". The minutes are placed as if they always ended in "s", so "1 min" leaves the "s" spot empty instead of moving right.
+- **Colour:** warmer amber, #FF7300 at full brightness (was #FFA000, which looked too yellow on the box). Close to the app's own amber.
+
 ## v2 — Clean start after adding or changing a station (2026-11-20)
 - When a station is added or changed, the app draws its own start-up screen (logo and station name) over the board. The skin now wipes it and redraws the whole board, so the clock is complete and row 1 is no longer covered.
 - **Another station:** the old station's trains are dropped at once, the line/direction screen shows, and new data is fetched straight away (before, it could take 20 s or more).
@@ -19,4 +23,4 @@ The font is Sean Petykowski's London Underground Dot Matrix Typeface (SIL Open F
 - **Clock:** box local time, `HH:MM:SS`, in the bold TfL digits, always in the same place.
 - **No trains, no data or loading:** the line and direction from the settings, centred (TfL's rule for an empty indicator). Both empty: only the clock. When requests keep failing, the last trains keep counting down for 2 minutes first.
 - **Hide trains to:** T-Skylt has no platform or direction for London, so destinations of the other direction are listed here. " Underground Station" is removed from every destination.
-- Colour #FFA000 at full brightness, scaled with the brightness setting.
+- Colour #FFA000 at full brightness, scaled with the brightness setting (warmer from v3).
