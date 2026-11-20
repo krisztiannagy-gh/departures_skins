@@ -4,6 +4,10 @@ Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.9
 
 The font is Sean Petykowski's London Underground Dot Matrix Typeface (SIL Open Font License 1.1, see `OFL.txt`), redrawn as pixel pictures in `font_src.py`.
 
+## v4 — Clock and rows no longer go missing after a network hiccup (2026-11-20)
+- When a data request fails, the app wipes the whole board before telling the skin. The skin only redrew what changed next, so the clock came back digit by digit (seconds first, hours and colons last) and still rows could stay blank. The skin now repaints the whole board after every request.
+- Safety net: the whole board is also repainted every 20 s, in case anything else draws over it.
+
 ## v3 — Minutes column and warmer amber (2026-11-20)
 - **Minutes:** the "m" stays in the same column when "2 mins" becomes "1 min". The minutes are placed as if they always ended in "s", so "1 min" leaves the "s" spot empty instead of moving right.
 - **Colour:** warmer amber, #FF7300 at full brightness (was #FFA000, which looked too yellow on the box). Close to the app's own amber.

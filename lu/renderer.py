@@ -581,7 +581,8 @@ def _clock_glyph(c):
 _board = None
 _net = {"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None, "loaded": False,
         "force": False, "station": None}
-_tick = {"last": 0}
+_tick = {"last": 0, "repaint": 0}
+REPAINT_S = 20                  # safety net: full repaint this often
 
 def _settings():
     return varinit.settings
@@ -695,7 +696,14 @@ def _fetch():
     finally: _settings()["maxdest"] = md
 
 def render():
-    """Host: time for a request."""
+    """Host: time for a request. The app may wipe or draw on the board while
+    fetching (errors, Wi-Fi reconnect), so the board is repainted afterwards."""
+    nxt = _request()
+    if _board is not None: _repaint()
+    _tick["repaint"] = ms()
+    return nxt
+
+def _request():
     _net["force"] = False
     t = ms()
     data = _fetch()
@@ -732,7 +740,9 @@ def animate_tick():
     _tick["last"] = now
     if gap > STALL_MS: _board.shift(gap - 30)          # stalled: carry on where it stopped
     _apply_color()
-    if _layers_moved(): _repaint()
+    if _layers_moved() or now - _tick["repaint"] > REPAINT_S * 1000:
+        _repaint()
+        _tick["repaint"] = now
     # requests failing for too long: stop counting down old predictions
     if _net["fails"] and _net["good_t"] is not None and now - _net["good_t"] > STALE_MAX_S * 1000:
         if _board.trains: _board.set_trains([])
