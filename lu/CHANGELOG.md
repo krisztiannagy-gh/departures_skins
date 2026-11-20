@@ -4,6 +4,11 @@ Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.9
 
 The font is Sean Petykowski's London Underground Dot Matrix Typeface (SIL Open Font License 1.1, see `OFL.txt`), redrawn as pixel pictures in `font_src.py`.
 
+## v2 — Clean start after adding or changing a station (2026-11-20)
+- When a station is added or changed, the app draws its own start-up screen (logo and station name) over the board. The skin now wipes it and redraws the whole board, so the clock is complete and row 1 is no longer covered.
+- **Another station:** the old station's trains are dropped at once, the line/direction screen shows, and new data is fetched straight away (before, it could take 20 s or more).
+- Other settings changes also fetch fresh data straight away.
+
 ## v1 — First version (2026-11-20)
 - **Layout (128×32):** two departure rows and a clock, in the real TfL dot-matrix font at its real size. Capitals sit one row below the lowercase baseline, as on the real boards.
 - **Rows:** row 1 shows the next train. Row 2 shows train 2 for 6 s, then trains 3 to 6 for 4 s each. Trains 3 to 6 only join if they are due within 30 minutes. Each row has its real order number and no line name.

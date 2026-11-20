@@ -572,7 +572,8 @@ def _clock_glyph(c):
 
 # --- host glue ----------------------------------------------------------------
 _board = None
-_net = {"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None, "loaded": False}
+_net = {"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None, "loaded": False,
+        "force": False, "station": None}
 _tick = {"last": 0}
 
 def _settings():
@@ -602,6 +603,39 @@ def _show():
     except Exception:
         from functions import refresh
         refresh()
+
+def _layers_moved():
+    """The app slides its own layers in and redraws the board bitmap when the
+    station or settings change (start-up screen with the station name)."""
+    try:
+        return (varinit.tg3.x != 0 or varinit.tg3.y != 0 or varinit.tg1.y != varinit.if_tall
+                or varinit.tg2.y != varinit.if_tall)
+    except Exception:
+        return False
+
+def _repaint():
+    """Take the screen back: our layer only, everything drawn again."""
+    _hide_list_layers()
+    bmp = varinit.topbottom
+    cls(bmp)
+    _board.draw(bmp, force=True)
+    _board.draw_clock(bmp, _wall(), force=True)
+    _show()
+
+def _station():
+    try:
+        st = _settings()["stations"]["1"]
+        return (str(st.get("country", "")), str(st.get("operator", "")), str(st.get("siteid", "")))
+    except Exception:
+        return None
+
+def _show_loading():
+    """Line/direction straight away (no animation) until the first data arrives."""
+    _board.trains, _board.departed, _board.trans = [], [], None
+    _board.mode = "text"
+    for i, r in enumerate(_board.rows):
+        r.start_in(_board._text(_board.texts[i]), 0)
+        r.phase, r.dy, r.shown = "idle", 0, ms()
 
 def _wall():
     """Box local time in whole seconds, or None while it isn't known yet."""
@@ -655,6 +689,7 @@ def _fetch():
 
 def render():
     """Host: time for a request."""
+    _net["force"] = False
     t = ms()
     data = _fetch()
     now = ms()
@@ -679,7 +714,7 @@ def render():
 
 def _hold(now):
     """True keeps the host from requesting right now (something is about to move)."""
-    if _net["good_t"] is None or _net["fails"]: return False
+    if _net["force"] or _net["good_t"] is None or _net["fails"]: return False
     if now - _net["good_t"] >= PREFER_IDLE_S * 1000 + REQUEST_S * 1000: return False
     return _board.next_motion(now) < 1500
 
@@ -690,6 +725,7 @@ def animate_tick():
     _tick["last"] = now
     if gap > STALL_MS: _board.shift(gap - 30)          # stalled: carry on where it stopped
     _apply_color()
+    if _layers_moved(): _repaint()
     # requests failing for too long: stop counting down old predictions
     if _net["fails"] and _net["good_t"] is not None and now - _net["good_t"] > STALE_MAX_S * 1000:
         if _board.trains: _board.set_trains([])
@@ -704,11 +740,23 @@ def message_active():
     return False
 
 def refresh_settings():
+    """Host: settings changed. The app has drawn over the board by now."""
     if _board is None: return
-    _configure()
-    _rebuild_trains()
-    _board.mode = None                                  # redraw with the new settings
+    st = _station()
+    if st != _net["station"]:                           # another station: start again
+        _net.update({"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None,
+                     "loaded": False, "station": st})
+        _configure()
+        _show_loading()
+    else:
+        _configure()
+        _rebuild_trains()
+        _board.mode = None                              # rows float out and back with the new settings
     _apply_color()
+    _repaint()
+    _net["force"] = True                                # fresh data on the next pass
+    try: varinit.shared["scroll_timer"] = 0
+    except Exception: pass
 
 def on_enter():
     global _board
@@ -717,20 +765,12 @@ def on_enter():
     varinit.want_seconds = True        # host adds seconds to expected time (row index 9)
     load_fonts()
     _board = Board(varinit.if_long)
-    _net.update({"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None, "loaded": False})
+    _net.update({"good_t": None, "fails": 0, "raw": None, "raw_t": 0, "info": None, "loaded": False,
+                 "force": False, "station": _station()})
     _configure()
     _apply_color()
-    _hide_list_layers()
-    bmp = varinit.topbottom
-    cls(bmp)
-    # start-up: line/direction straight away (no animation), departures follow
-    _board.mode = "text"
-    for i, r in enumerate(_board.rows):
-        r.start_in(_board._text(_board.texts[i]), 0)
-        r.phase, r.dy, r.shown = "idle", 0, ms()
-    _board.draw(bmp, force=True)
-    _board.draw_clock(bmp, _wall(), force=True)
-    _show()
+    _show_loading()
+    _repaint()
     _tick["last"] = ms()
     return time.monotonic() - varinit.updatedelay + 0.3
 
