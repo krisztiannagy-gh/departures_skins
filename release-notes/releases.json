@@ -112,5 +112,11 @@
   "commit": "b98514ac82fcf3cca67abd3c9f24959da24f0dc0",
   "title": "London Underground skin v3 — fixed minutes column, warmer amber",
   "notes": "lu-v3.md"
+ },
+ {
+  "tag": "lu-v4",
+  "commit": "3771c898850d3bacce4862585ba81ea12f49f881",
+  "title": "London Underground skin v4 — clock no longer goes missing after a network hiccup",
+  "notes": "lu-v4.md"
  }
 ]
