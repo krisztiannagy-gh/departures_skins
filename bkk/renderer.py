@@ -46,7 +46,7 @@ the clock when a PA has a start or end time.
 Contract: on_enter(), render(), animate_tick(), message_active(),
 refresh_settings(), on_exit()
 """
-import time, json
+import time, json, gc
 
 try:
     import varinit, displayio
@@ -507,7 +507,25 @@ def _host_texts():
 PA_FETCH_AGE_S = 60     # bottom-row PA: request at the next separator once data is this old
 PA_FETCH_MAX_S = 120    # ...and in any case once it's this old
 _pa = None              # pa.Engine while the skin runs on a big enough panel
-_pa_layer = {"group": None, "pal": None, "tgs": {}}
+_pa_layer = {"group": None, "pal": None, "tgs": {}, "ver": -1}
+# Smoothness. The box does one thing at a time: a request, a settings-page
+# answer or a garbage collection (memory clean-up, 50-150 ms on 2 MB) stops
+# the animation. So: collect garbage on purpose while a separator passes;
+# after a long stall the text carries on where it stopped (a pause, no jump);
+# after a short one it catches up at most MAX_STEP px per frame.
+PAUSE_MS = 120          # a frame gap longer than this counts as a stall
+FRAME_MS = 30           # normal frame time, kept when a stall is turned into a pause
+MAX_STEP = 2            # px a scrolling text may move in one frame when behind
+GC_EVERY_MS = 4000      # at most one planned garbage collection this often
+_tick = {"last": 0, "sep": False, "gc_t": 0}
+PERF = {}               # stall statistics for the app's /pa/perf page
+
+def perf_reset():
+    PERF.clear()
+    PERF.update({"frames": 0, "gap_60": 0, "gap_150": 0, "gap_500": 0, "max_gap_ms": 0,
+                 "gc": 0, "gc_ms": 0, "gc_max_ms": 0, "req": 0, "req_ms": 0, "req_max_ms": 0,
+                 "since_ms": PA.ms() if PA is not None else 0})
+perf_reset()
 _layout = {"now": "plain"}      # plain | bottom | fs
 
 def _rows_n():
@@ -532,7 +550,9 @@ def _pa_start():
     pal[1] = varinit.palette[1]
     grp = displayio.Group()
     varinit.group.append(grp)
-    _pa_layer.update({"group": grp, "pal": pal, "tgs": {}})
+    _pa_layer.update({"group": grp, "pal": pal, "tgs": {}, "ver": -1})
+    _tick["last"] = 0
+    perf_reset()
 
 def _pa_stop():
     global _pa
@@ -540,7 +560,7 @@ def _pa_stop():
     if grp is not None:
         try: varinit.group.remove(grp)
         except Exception: pass
-    _pa_layer.update({"group": None, "pal": None, "tgs": {}})
+    _pa_layer.update({"group": None, "pal": None, "tgs": {}, "ver": -1})
     if PA is not None: PA.stop()
     _pa = None
     _layout["now"] = "plain"
@@ -570,23 +590,25 @@ def _pa_sync(now_ms):
     try:
         if lay["pal"][1] != varinit.palette[1]: lay["pal"][1] = varinit.palette[1]   # brightness / tone
     except Exception: pass
-    want = _pa_want()
     changed = False
-    for k in list(tgs.keys()):
-        if k not in want or tgs[k]["strip"] is not want[k][0]:
-            try: grp.remove(tgs[k]["tg"])
-            except Exception: pass
-            del tgs[k]
+    if lay["ver"] != _pa.version:            # only rebuild when the engine's layout changed
+        lay["ver"] = _pa.version
+        want = _pa_want()
+        for k in list(tgs.keys()):
+            if k not in want or tgs[k]["strip"] is not want[k][0]:
+                try: grp.remove(tgs[k]["tg"])
+                except Exception: pass
+                del tgs[k]
+                changed = True
+        for k, (st, y) in want.items():
+            if k in tgs: continue
+            bmp = displayio.Bitmap(st.w, 7, 2)
+            for x, t in st.items:
+                draw_text(bmp, t, x, 0, 1, clip_r=st.w + 8)
+            tg = displayio.TileGrid(bmp, pixel_shader=lay["pal"], x=st.panel_w, y=y)
+            grp.append(tg)
+            tgs[k] = {"tg": tg, "bmp": bmp, "strip": st, "cut": st.w, "clr": st.w}
             changed = True
-    for k, (st, y) in want.items():
-        if k in tgs: continue
-        bmp = displayio.Bitmap(st.w, 7, 2)
-        for x, t in st.items:
-            draw_text(bmp, t, x, 0, 1, clip_r=st.w + 8)
-        tg = displayio.TileGrid(bmp, pixel_shader=lay["pal"], x=st.panel_w, y=y)
-        grp.append(tg)
-        tgs[k] = {"tg": tg, "bmp": bmp, "strip": st, "cut": st.w, "clr": st.w}
-        changed = True
     for d in tgs.values():
         st, tg, bmp = d["strip"], d["tg"], d["bmp"]
         x = st.x(now_ms)
@@ -598,6 +620,8 @@ def _pa_sync(now_ms):
             for col in range(d["clr"], stop):
                 for yy in range(7): bmp[col, yy] = 0
             if stop > d["clr"]: d["clr"] = stop
+        if x < tg.x - MAX_STEP and tg.x <= st.panel_w:
+            x = tg.x - MAX_STEP              # behind after a short stall: catch up gently
         if tg.x != x:
             tg.x = x
             changed = True
@@ -639,7 +663,12 @@ def _fetch():
     scrolling PAs are told to resume where they stopped."""
     t = PA.ms() if PA is not None else 0
     data = get_departure(num="1")
-    if _pa is not None: _pa.shift(PA.ms() - t)
+    if PA is not None:
+        d = PA.ms() - t
+        if _pa is not None: _pa.shift(d)
+        _tick["last"] = PA.ms()              # the freeze is handled, not a stall
+        PERF["req"] += 1; PERF["req_ms"] += d
+        if d > PERF["req_max_ms"]: PERF["req_max_ms"] = d
     return data
 
 def _store_good(data):
@@ -656,8 +685,10 @@ def _hold():
     if _pa.fullscreen():
         return not PA.clock_due()            # no departures visible: no requests
     if _pa.bottom() is None or int(_settings().get("bkk_static", 0)): return False
-    if _status is not None or _net["good"] is None or _net["bridging"]:
+    if _net["good"] is None or _net["bridging"]:
         return False                         # connecting / retrying works as usual
+    if _status is not None and _status["kind"] not in ("empty", "info"):
+        return False                         # loading / offline screens retry as usual
     age = time.monotonic() - _net["good_t"]
     if age >= PA_FETCH_MAX_S: return False
     if age >= PA_FETCH_AGE_S and _pa.bottom().sep_visible(PA.ms()): return False
@@ -764,11 +795,41 @@ def _check_bridge(now):
         cls(bmp); _show_rows(bmp, age_rows(_net["good"], age)); return True
     return False
 
+def _pa_gc(now_ms):
+    """Collect garbage while a separator is passing, where a short stop shows
+    least, so the automatic collection rarely hits the middle of the text."""
+    sep = False
+    for d in _pa_layer["tgs"].values():
+        if d["strip"].sep_visible(now_ms):
+            sep = True
+            break
+    if sep and not _tick["sep"] and now_ms - _tick["gc_t"] >= GC_EVERY_MS:
+        t0 = PA.ms()
+        gc.collect()
+        t = PA.ms()
+        d = t - t0
+        _pa.shift(d)
+        _tick["gc_t"] = _tick["last"] = t
+        PERF["gc"] += 1; PERF["gc_ms"] += d
+        if d > PERF["gc_max_ms"]: PERF["gc_max_ms"] = d
+    _tick["sep"] = sep
+
 def animate_tick():
     now = time.monotonic()
     changed = False
     if _pa is not None and _splash["done"]:
-        _pa.update()
+        now_ms = PA.ms()
+        gap = now_ms - _tick["last"] if _tick["last"] else 0
+        _tick["last"] = now_ms
+        if _pa_layer["tgs"] and gap:
+            PERF["frames"] += 1
+            if gap > 60: PERF["gap_60"] += 1
+            if gap > 150: PERF["gap_150"] += 1
+            if gap > 500: PERF["gap_500"] += 1
+            if gap > PERF["max_gap_ms"]: PERF["max_gap_ms"] = gap
+            if gap > PAUSE_MS: _pa.shift(gap - FRAME_MS)   # stalled: carry on where it stopped
+        _pa.update(now_ms)
+        _pa_gc(now_ms)
         lay = _pa_layout()
         if lay != _layout["now"]:
             was_fs = _layout["now"] == "fs"
@@ -776,7 +837,7 @@ def animate_tick():
             _redraw()
             if was_fs: _net["force"] = True       # fresh departures right after a full-screen PA
             changed = True
-        changed = _pa_sync(PA.ms()) or changed
+        changed = _pa_sync(now_ms) or changed
     changed = _check_bridge(now) or changed
     if _rows:
         blink = max(100, int(_settings().get("arrival_blink_ms", 600))) / 1000

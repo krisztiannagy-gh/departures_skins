@@ -2,6 +2,12 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.986 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v12 — Smoother PA scrolling (2026-11-20)
+- **No more requests mid-text on the "no departures" screen:** it now waits for the separator like the departures do (about one request a minute instead of every 20 s at random points).
+- **Memory clean-up while the separator passes:** the box's garbage collection (50–150 ms of standstill) is run on purpose there, so the automatic one rarely hits the middle of the text. Less garbage is made per frame, so it's needed less often.
+- **Stalls become pauses:** after a long stall the text carries on where it stopped (no jump); after a short one it catches up at most 2 px per frame.
+- **Statistics** for the app's `/pa/perf` page (needs Departures 0.994).
+
 ## v11 — i and í as on the real boards (2026-11-20)
 - **i** now has a small roof at the top left and a platform at the foot (dot, empty row, then the letter), drawn after the real boards. 3 px wide instead of 1.
 - **í** gets the same roof and platform under its accent and gap. **Í** stays as in v10.
