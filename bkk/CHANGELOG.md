@@ -2,6 +2,11 @@
 
 Skin for the Departures app (needs the krisztiannagy-gh build of Departures, 0.986 or later). The box updates the skin by itself when its `manifest.json` version changes.
 
+## v11 — i and í as on the real boards (2026-11-20)
+- **i** now has a small roof at the top left and a platform at the foot (dot, empty row, then the letter), drawn after the real boards. 3 px wide instead of 1.
+- **í** gets the same roof and platform under its accent and gap. **Í** stays as in v10.
+- Names with an i become 2 px wider per i.
+
 ## v10 — Readable í and Í (2026-11-20)
 - **í** and **Í** now have an empty row between the 2 px accent and the letter, which shrinks to 4 px (the same rule as ő and ű). Before, the accent touched the narrow stem or the I's top bar and the letter read as one bent stroke.
 

@@ -64,7 +64,9 @@ g("e", ".....", ".....", ".###.", "#...#", "#####", "#....", ".###.")
 g("f", "..##", ".#..", ".#..", "###.", ".#..", ".#..", ".#..")
 g("g", ".....", ".....", ".####", "#...#", ".####", "....#", ".###.")
 g("h", "#....", "#....", "#.##.", "##..#", "#...#", "#...#", "#...#")
-g("i", "#", ".", "#", "#", "#", "#", "#")
+# i: dot, gap, then a stem with a small roof (top left) and a platform at the
+# foot, as on the real boards (Krisztian, 2026-11-20)
+g("i", ".#.", "...", "##.", ".#.", ".#.", ".#.", "###")
 g("j", "..#", "...", "..#", "..#", "..#", "#.#", ".#.")
 g("k", "#...", "#...", "#..#", "#.#.", "##..", "#.#.", "#..#")
 g("l", "#.", "#.", "#.", "#.", "#.", "#.", ".#")
@@ -103,9 +105,10 @@ lower_accent("u", ACUTE, "ú"); lower_accent("u", UML, "ü")
 G["ő"] = [DBL[0], DBL[1], ".....", ".###.", "#...#", "#...#", ".###."]
 G["ű"] = [DBL[0], DBL[1], ".....", "#...#", "#...#", "#..##", ".##.#"]
 lower_accent("a", UML, "ä")
-# í / Í: a narrow stem would merge with a touching accent, so (like ő/ű) the
-# letter shrinks to 4 px with an empty row under the 2 px accent (2026-11-20)
-G["í"] = [".#", "#.", "..", "#.", "#.", "#.", "#."]
+# í / Í: a touching accent would merge with the narrow letter, so (like ő/ű)
+# the letter shrinks to 4 px with an empty row under the 2 px accent; í keeps
+# the roof and platform of i (2026-11-20)
+G["í"] = ["..#", ".#.", "...", "##.", ".#.", ".#.", "###"]
 
 # accented capitals: 5 px tall body (rows 2-6) under the accent
 CAP5 = {
