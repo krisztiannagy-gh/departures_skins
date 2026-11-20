@@ -106,5 +106,11 @@
   "commit": "38a8f0870989e6d8c3243a397657a6f45cceacab",
   "title": "London Underground skin v2 — clean start after a station change",
   "notes": "lu-v2.md"
+ },
+ {
+  "tag": "lu-v3",
+  "commit": "b98514ac82fcf3cca67abd3c9f24959da24f0dc0",
+  "title": "London Underground skin v3 — fixed minutes column, warmer amber",
+  "notes": "lu-v3.md"
  }
 ]
