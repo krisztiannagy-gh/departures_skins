@@ -100,5 +100,11 @@
   "commit": "3717240ec01d4b2f4020823cbd6018daa1e367a2",
   "title": "London Underground skin v1 — first release",
   "notes": "lu-v1.md"
+ },
+ {
+  "tag": "lu-v2",
+  "commit": "38a8f0870989e6d8c3243a397657a6f45cceacab",
+  "title": "London Underground skin v2 — clean start after a station change",
+  "notes": "lu-v2.md"
  }
 ]
